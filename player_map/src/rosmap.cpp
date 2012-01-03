@@ -20,7 +20,8 @@ namespace rf {
     nav_msgs::GetMap::Response resp;
     ROS_INFO("Requesting the map...");
     while(!ros::service::call(srv_name, req, resp)) {
-      ROS_WARN("Request for map '%s' failed; trying again...", srv_name);
+      ROS_WARN("Request for map '%s' failed; trying again...",
+               ros::names::resolve(string(srv_name)).c_str());
       ros::Duration d(0.5);
       d.sleep();
       if (!nh.ok())
