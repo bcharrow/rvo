@@ -1,0 +1,20 @@
+<package>
+  <description brief="rvo_move">
+
+     rvo_move
+
+  </description>
+  <author>Benjamin Charrow</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/rvo_move</url>
+  <depend package="roscpp"/>
+  <depend package="geometry_msgs"/>
+  <depend package="nav_msgs"/>
+  <depend package="rvo2"/>
+  <depend package="actionlib_msgs" />
+  <depend package="actionlib" />
+  <depend package="eigen" />
+  <depend package="tf" />
+  <depend package="player_map" />
+</package>

@@ -1,0 +1,27 @@
+<launch>  
+  <group ns="scarab26">
+    <node pkg="rvo_move" type="move_server" name="move_server" output="screen">
+      <rosparam file="$(find rvo_move)/config/scarab_move.yaml" command="load" />
+      <remap from="cmd_vel" to="motor/cmd_vel" />
+      <remap from="map" to="/static_map_valid" />
+
+      <param name="nbots" value="2" />
+      <param name="id" value="0" />
+      <param name="robot0" value="/scarab26" />
+      <param name="robot1" value="/scarab31" />
+    </node>
+  </group>
+
+  <group ns="scarab31">
+    <node pkg="rvo_move" type="move_server" name="move_server" output="screen">
+      <rosparam file="$(find rvo_move)/config/scarab_move.yaml" command="load" />
+      <remap from="cmd_vel" to="motor/cmd_vel" />
+      <remap from="map" to="/static_map_valid" />
+
+      <param name="nbots" value="2" />
+      <param name="id" value="1" />
+      <param name="robot0" value="/scarab26" />
+      <param name="robot1" value="/scarab31" />
+    </node>
+  </group>
+</launch>
