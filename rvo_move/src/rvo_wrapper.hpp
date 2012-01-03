@@ -12,7 +12,7 @@
 
 #include <player_map/rosmap.hpp>
 
-#include "bot_client.hpp"
+#include <rvo_move/bot_client.hpp>
 
 namespace rf {
   class RVOWrapper {

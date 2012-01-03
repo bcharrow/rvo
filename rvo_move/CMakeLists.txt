@@ -22,5 +22,7 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 rosbuild_genmsg()
 
-rosbuild_add_executable(move_server src/move_server.cpp src/bot_client.cpp src/rvo_wrapper.cpp)
+rosbuild_add_library(botclient src/bot_client.cpp)
+rosbuild_add_executable(move_server src/move_server.cpp src/rvo_wrapper.cpp)
 rosbuild_add_executable(move_client src/move_client.cpp)
+target_link_libraries(move_server botclient)
