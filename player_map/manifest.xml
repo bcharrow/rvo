@@ -1,0 +1,21 @@
+<package>
+  <description brief="player_map">
+
+     player_map
+
+  </description>
+  <author>Benjamin Charrow</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/player_map</url>
+
+  <depend package="roscpp" />
+  <depend package="eigen" />
+  <depend package="nav_msgs" />
+
+  <export>
+    <cpp cflags="-I${prefix}/include" lflags="-L${prefix}/lib -lplayermap" />
+  </export>
+</package>
+
+
