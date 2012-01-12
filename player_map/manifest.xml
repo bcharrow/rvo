@@ -12,6 +12,7 @@
   <depend package="roscpp" />
   <depend package="eigen" />
   <depend package="nav_msgs" />
+  <depend package="map_server" />
 
   <export>
     <cpp cflags="-I${prefix}/include" lflags="-L${prefix}/lib -lplayermap" />

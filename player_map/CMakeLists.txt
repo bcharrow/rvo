@@ -19,7 +19,7 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 #uncomment if you have defined messages
 #rosbuild_genmsg()
 #uncomment if you have defined services
-#rosbuild_gensrv()
+rosbuild_gensrv()
 
 #common commands for building c++ executables and libraries
 rosbuild_add_library(playermap src/map.c src/map_draw.c src/map_range.c
@@ -32,3 +32,9 @@ rosbuild_add_library(playermap src/map.c src/map_draw.c src/map_range.c
 
 rosbuild_add_gtest(test_rosmap src/rosmap_test.cpp)
 target_link_libraries(test_rosmap playermap)
+
+rosbuild_add_executable(player_map_server src/player_map_server.cpp)
+target_link_libraries(player_map_server playermap image_loader)
+
+rosbuild_add_executable(player_map_test src/player_map_test.cpp)
+target_link_libraries(player_map_test playermap)

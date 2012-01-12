@@ -6,12 +6,13 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
+#include <nav_msgs/OccupancyGrid.h>
 #include <player_map/map.h>
 
 namespace rf {
-
+  map_t * requestCSpaceMap(const char *name);
   map_t * requestMap(const char *name);
-
+  void convertMap(const nav_msgs::OccupancyGrid &map, map_t *pmap);
   class LOSChecker {
   public:
     LOSChecker(map_t *map);

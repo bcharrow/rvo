@@ -6,9 +6,46 @@
 #include <ros/ros.h>
 
 #include <nav_msgs/GetMap.h>
+#include <player_map/GetMap.h>
 
 using namespace std;
 namespace rf {
+
+  map_t * requestCSpaceMap(const char *srv_name) {
+    ros::NodeHandle nh;
+    // Taken from PAMCL
+    map_t* map = map_alloc();
+    ROS_ASSERT(map);
+    
+    // get map via RPC
+    player_map::GetMap::Request  req;
+    player_map::GetMap::Response resp;
+    ROS_INFO("Requesting c-space + map...");
+    while(!ros::service::call(srv_name, req, resp)) {
+      ROS_WARN("Request for map '%s' failed; trying again...",
+               ros::names::resolve(string(srv_name)).c_str());
+      ros::Duration d(0.5);
+      d.sleep();
+      if (!nh.ok())
+        break;
+    }
+    ROS_INFO("Received a %d X %d map @ %.3f m/pix  max_occ_dist= %.3f\n",
+             resp.map.info.width,
+             resp.map.info.height,
+             resp.map.info.resolution,
+             resp.max_occ_dist);
+    convertMap(resp.map, map);
+
+    map->max_occ_dist = resp.max_occ_dist;
+    for (int j = 0; j < map->size_y; j++) {
+        for (int i = 0; i < map->size_x; i++) {
+          int ind = MAP_INDEX(map, i, j);
+          (map->cells + ind)->occ_dist = resp.occ_dist[ind];
+        }
+    }
+    return map;
+  }
+  
   map_t * requestMap(const char *srv_name) {
     ros::NodeHandle nh;
     // Taken from PAMCL
@@ -32,24 +69,29 @@ namespace rf {
              resp.map.info.height,
              resp.map.info.resolution);
     
-    map->size_x = resp.map.info.width;
-    map->size_y = resp.map.info.height;
-    map->scale = resp.map.info.resolution;
-    map->origin_x = resp.map.info.origin.position.x + (map->size_x / 2) * map->scale;
-    map->origin_y = resp.map.info.origin.position.y + (map->size_y / 2) * map->scale;
-    // Convert to player format
-    map->cells = (map_cell_t*)malloc(sizeof(map_cell_t)*map->size_x*map->size_y);
-    ROS_ASSERT(map->cells);
-    for(int i=0;i<map->size_x * map->size_y;i++) {
-      if(resp.map.data[i] == 0)
-        map->cells[i].occ_state = -1;
-      else if(resp.map.data[i] == 100)
-        map->cells[i].occ_state = +1;
-      else
-        map->cells[i].occ_state = 0;
-    }
+    convertMap(resp.map, map);
     return map;
   }
+
+  void convertMap(const nav_msgs::OccupancyGrid &map, map_t *pmap) {
+    pmap->size_x = map.info.width;
+    pmap->size_y = map.info.height;
+    pmap->scale = map.info.resolution;
+    pmap->origin_x = map.info.origin.position.x + (pmap->size_x / 2) * pmap->scale;
+    pmap->origin_y = map.info.origin.position.y + (pmap->size_y / 2) * pmap->scale;
+    // Convert to player format
+    pmap->cells = (map_cell_t*)malloc(sizeof(map_cell_t)*pmap->size_x*pmap->size_y);
+    ROS_ASSERT(pmap->cells);
+    for(int i=0;i<pmap->size_x * pmap->size_y;i++) {
+      if(map.data[i] == 0)
+        pmap->cells[i].occ_state = -1;
+      else if(map.data[i] == 100)
+        pmap->cells[i].occ_state = +1;
+      else
+        pmap->cells[i].occ_state = 0;
+    }
+  }
+  
 
   LOSChecker::LOSChecker(map_t *map) : map_(map) {
 
