@@ -358,11 +358,13 @@ namespace rf {
     
     ROS_INFO("Setting up action server '%s'", action_name_.c_str());
     // Get the map
-    map_ = requestMap("map");
+    map_ = requestCSpaceMap("map");
     double max_occ_dist;
-    ROS_INFO("Building c-space...");
-    pnh_.param("path_margin", max_occ_dist, 0.2);
-    map_update_cspace(map_, max_occ_dist * 1.1);
+    pnh_.param("path_margin", max_occ_dist, 0.1);
+    if (map_->max_occ_dist < max_occ_dist) {
+      ROS_WARN("path_margin set to %0.2f but map's c-space max_occ_dist is %0.2f",
+               max_occ_dist, map_->max_occ_dist);
+    }
     // Get bots
     bots_ = BotClient::MakeBots(pnh_);
     ROS_INFO("Listening to %zu bots", bots_.size());

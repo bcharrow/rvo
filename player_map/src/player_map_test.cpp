@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < map->size_x; i++) {
       int ind = MAP_INDEX(map, i, j);
       bool same_state = map->cells[ind].occ_state == full_map->cells[ind].occ_state;
-      bool same_dist = map->cells[ind].occ_dist == full_map->cells[ind].occ_dist;
+      bool same_dist = (map->cells[ind].occ_dist - full_map->cells[ind].occ_dist) < 1e-6;
       if (!same_state) {
         ROS_ERROR("States differ");
         goto err;
