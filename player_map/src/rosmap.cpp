@@ -59,7 +59,7 @@ namespace rf {
     while(!ros::service::call(srv_name, req, resp)) {
       ROS_WARN("Request for map '%s' failed; trying again...",
                ros::names::resolve(string(srv_name)).c_str());
-      ros::Duration d(0.5);
+      ros::Duration d(4.0);
       d.sleep();
       if (!nh.ok())
         break;
@@ -199,6 +199,11 @@ namespace rf {
           double edge_cost = ci == newi || cj == newj ? 1 : sqrt(2);        
           if (edge_cost + cost < costs[index]) {
             // fprintf(stderr, "    Better path: new cost= % 6.2f\n", edge_cost + cost);
+            if (!isinf(costs[index])) {
+              set<cost_t>::iterator it = Q.find(make_pair(costs[index], make_pair(newi, newj)));
+              Q.erase(it);
+            }
+            
             costs[index] = edge_cost + cost;
             prev_i[index] = ci;
             prev_j[index] = cj;
