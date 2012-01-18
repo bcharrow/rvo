@@ -24,7 +24,7 @@ namespace rf {
     while(!ros::service::call(srv_name, req, resp)) {
       ROS_WARN("Request for map '%s' failed; trying again...",
                ros::names::resolve(string(srv_name)).c_str());
-      ros::Duration d(0.5);
+      ros::Duration d(4.0);
       d.sleep();
       if (!nh.ok())
         break;
