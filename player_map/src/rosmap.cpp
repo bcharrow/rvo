@@ -89,6 +89,8 @@ namespace rf {
         pmap->cells[i].occ_state = +1;
       else
         pmap->cells[i].occ_state = 0;
+
+      pmap->cells[i].occ_dist = 0;
     }
   }
   
