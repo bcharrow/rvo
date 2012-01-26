@@ -118,7 +118,7 @@ namespace rf {
       // fprintf(stderr, "%f %f\n", line_x, line_y);
       map_cell_t *cell = map_get_cell(map_, line_x, line_y, 0);
       if (cell == NULL) {
-        ROS_WARN_THROTTLE(5, "LOSChecker::LineOfSight() Beyond map edge");
+        // ROS_WARN_THROTTLE(5, "LOSChecker::LineOfSight() Beyond map edge");
         return false;
       } else if (cell->occ_state != -1 || cell->occ_dist < max_dist) {
         return false;
