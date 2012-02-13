@@ -17,13 +17,14 @@
 namespace rf {
   class RVOWrapper {
   public:
-    RVOWrapper(std::vector<BotClient*> bots, size_t id, map_t *map);
+    RVOWrapper(std::vector<BotClient*> bots, size_t id, map_t *map,
+               const std::vector<std::vector<RVO::Vector2> > &obstacles);
     ~RVOWrapper();
 
     static RVOWrapper* ROSInit(const ros::NodeHandle& nh, map_t *map, std::vector<BotClient*> bots);
     
     bool step();
-    bool setGoal(const geometry_msgs::Pose& p);
+    std::vector<geometry_msgs::Pose> setGoal(const geometry_msgs::Pose& p);
 
     size_t getID() const { return id_; }
     bool update();
@@ -36,13 +37,14 @@ namespace rf {
     void setPathMargin(float margin) { path_margin_ = margin; }
     void setGoalTolerance(float tol) { goal_tol_ = tol; }
     void setLOSMargin(float marg) { los_margin_ = marg; }
-    
+    void addAgents();
   private:
     bool getLeadGoal(RVO::Vector2 *goal);
+    bool getOtherGoal(int bot_id, RVO::Vector2 *goal);
     
     RVO::RVOSimulator *sim_;
     std::vector<rf::BotClient *> bots_;
-    std::vector<RVO::Vector2> goals_;
+    RVO::Vector2 goal_;
     std::vector<RVO::Vector2> waypoints_;
     map_t *map_;
     LOSChecker *checker_;
@@ -65,8 +67,10 @@ namespace rf {
     void start();
   private:
     ros::NodeHandle nh_, pnh_;
+    ros::Publisher path_pub_;
     actionlib::SimpleActionServer<rvo_move::MoveAction> as_;
     std::string action_name_;
+    std::string tf_frame_;
     std::vector<BotClient *> bots_;
     map_t *map_;
     rf::RVOWrapper *wrapper_;

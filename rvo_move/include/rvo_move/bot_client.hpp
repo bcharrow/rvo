@@ -7,7 +7,7 @@
 
 #include "nav_msgs/Odometry.h"
 
-#include "geometry_msgs/Pose.h"
+#include "geometry_msgs/PoseStamped.h"
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 
 namespace rf {
@@ -20,13 +20,13 @@ namespace rf {
     void velCallback(const geometry_msgs::Twist &msg);
 
     bool haveOdom();
+    bool haveOdom(const ros::Duration &d);
     bool havePose();
-    bool haveVel();
+    bool havePose(const ros::Duration &d);
     
     std::string getName() const { return name_; }
     nav_msgs::Odometry getOdom();
     geometry_msgs::Pose getPose();
-    geometry_msgs::Twist getVel();
 
     void pubVel(double v, double w);
     
@@ -36,12 +36,12 @@ namespace rf {
     ros::NodeHandle *nh_;
     ros::Subscriber pose_sub_, odom_sub_, vel_sub_;
     ros::Publisher vel_pub_;
-    bool got_odom_, got_pose_, got_vel_;
+    bool got_odom_, got_pose_;
     std::string name_;
     
     boost::mutex mutex_;
 
-    geometry_msgs::Pose pose_;
+    geometry_msgs::PoseStamped pose_;
     nav_msgs::Odometry odom_;
     geometry_msgs::Twist vel_;
   };

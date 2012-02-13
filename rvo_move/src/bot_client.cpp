@@ -6,12 +6,11 @@ using namespace std;
 
 namespace rf {
   BotClient::BotClient(const ros::NodeHandle &parent, string prefix) :
-    got_odom_(false), got_pose_(false), got_vel_(false) {
+    got_odom_(false), got_pose_(false) {
     parent.param(prefix, name_, prefix);
     nh_ = new ros::NodeHandle(name_);
     pose_sub_ = nh_->subscribe("amcl_pose", 5, &BotClient::poseCallback, this);
     odom_sub_ = nh_->subscribe("laser_odom/lodom", 5, &BotClient::odomCallback, this);
-    vel_sub_ = nh_->subscribe("motor/cmd_vel", 5, &BotClient::velCallback, this);
 
     vel_pub_ = nh_->advertise<geometry_msgs::Twist>("motor/cmd_vel", 5);
   }
@@ -20,20 +19,17 @@ namespace rf {
     boost::mutex::scoped_lock lock(mutex_);
     got_odom_ = true;
     odom_ = msg;
+    // ROS_WARN_STREAM_THROTTLE(2, "" << getName() << ": odom = " << msg.twist.twist.linear.x <<
+    //                          ", " << msg.twist.twist.angular.z);        
   }
 
   void BotClient::poseCallback(const geometry_msgs::PoseWithCovarianceStamped &msg) {
     boost::mutex::scoped_lock lock(mutex_);
     got_pose_ = true;
-    pose_ = msg.pose.pose;
-    // ROS_WARN_STREAM_THROTTLE(2, "" << getName() << ": pose = " << pose_.position.x << ", " << pose_.position.y);
-  }
-
-  void BotClient::velCallback(const geometry_msgs::Twist &msg) {
-    boost::mutex::scoped_lock lock(mutex_);
-    got_vel_ = true;
-    vel_ = msg;
-    // ROS_WARN_STREAM_THROTTLE(2, "" << getName() << ": vel = " << vel_.linear.x << ", " << vel_.angular.z);    
+    pose_.pose = msg.pose.pose;
+    pose_.header = msg.header;
+    // ROS_WARN_STREAM_THROTTLE(2, "" << getName() << ": pose = " <<
+    //                          pose_.pose.position.x << ", " << pose_.pose.position.y);
   }
   
   nav_msgs::Odometry BotClient::getOdom() {
@@ -43,17 +39,17 @@ namespace rf {
 
   geometry_msgs::Pose BotClient::getPose() {
     boost::mutex::scoped_lock lock(mutex_);    
-    return pose_;
+    return pose_.pose;
   }
-
-  geometry_msgs::Twist BotClient::getVel() {
-    boost::mutex::scoped_lock lock(mutex_);    
-    return vel_;
-  }
-
+  
   bool BotClient::haveOdom() {
     boost::mutex::scoped_lock lock(mutex_);
     return got_odom_;
+  }
+
+  bool BotClient::haveOdom(const ros::Duration &d) {
+    boost::mutex::scoped_lock lock(mutex_);
+    return got_odom_ && (ros::Time::now() - odom_.header.stamp) < d;
   }
 
   bool BotClient::havePose() {
@@ -61,11 +57,11 @@ namespace rf {
     return got_pose_;
   }
   
-  bool BotClient::haveVel() {
-    boost::mutex::scoped_lock lock(mutex_);    
-    return got_vel_;
+  bool BotClient::havePose(const ros::Duration &d) {
+    boost::mutex::scoped_lock lock(mutex_);
+    return got_pose_ && (ros::Time::now() - pose_.header.stamp) < d;
   }
-
+  
   vector<BotClient *> BotClient::MakeBots(const ros::NodeHandle& nh) {
     vector<BotClient *> bots;
     int nbots;

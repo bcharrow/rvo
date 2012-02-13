@@ -1,6 +1,10 @@
 #include "rvo_wrapper.hpp"
-
+#include <fstream>
 #include <tf/tf.h>
+
+
+#include <nav_msgs/Path.h>
+
 
 using namespace rf;
 using namespace std;
@@ -45,7 +49,8 @@ Eigen::Vector2f rvo_to_eig(const RVO::Vector2& vec) {
 
 //================================= Wrapper =================================//
 namespace rf {
-  RVOWrapper::RVOWrapper(vector<BotClient *> bots, size_t id, map_t *map) :
+  RVOWrapper::RVOWrapper(vector<BotClient *> bots, size_t id, map_t *map,
+                         const vector<vector<RVO::Vector2> > &obstacles) :
     bots_(bots), map_(map), id_(id), axel_width_(0.23), goal_tol_(0.1),
     path_margin_(0.2), timestep_(0.1), los_margin_(0.1) {
     if (id >= bots_.size()) {
@@ -62,62 +67,14 @@ namespace rf {
     sim_ = new RVO::RVOSimulator();
     sim_->setAgentDefaults(neighborDist, maxNeighbors, timeHorizon,
                            timeHorizonObst, radius, maxSpeed, velocity);
-    sim_->setTimeStep(timestep_);
+    sim_->setTimeStep(timestep_);    
 
-    std::vector<RVO::Vector2> obs1, obs2, obs3, obs4, obs5;
-    // Lower square in Levine
-    obs1.push_back(RVO::Vector2(-6.6750, 13.8700));
-    obs1.push_back(RVO::Vector2(-6.6750, 5.4700));
-    obs1.push_back(RVO::Vector2(0.6750, 5.4700));
-    obs1.push_back(RVO::Vector2(0.5250, 13.8700));
-    // Upper square in levine
-    obs2.push_back(RVO::Vector2(0.5250, 18.5200));
-    obs2.push_back(RVO::Vector2(0.5250, 27.2200));
-    obs2.push_back(RVO::Vector2(-6.5250, 27.2200));
-    obs2.push_back(RVO::Vector2(-6.5250, 18.6700));
-    // Right boundary
-    obs3.push_back(RVO::Vector2(1.90, 27.4));
-    obs3.push_back(RVO::Vector2(1.90, 5.4700));
-    obs3.push_back(RVO::Vector2(16.2250, 5.4700));
-    obs3.push_back(RVO::Vector2(15.9250, 7.7200));
-    obs3.push_back(RVO::Vector2(5.4250, 28.7200));
-    obs3.push_back(RVO::Vector2(5.4250, 27.40));
-    // Top boundary + left boundary
-    obs4.push_back(RVO::Vector2(5.7750, 30.8200));
-    obs4.push_back(RVO::Vector2(5.7750, 28.7200));
-    obs4.push_back(RVO::Vector2(-8.3250, 28.8700));
-    obs4.push_back(RVO::Vector2(-8.3250, 5.6200));
-    obs4.push_back(RVO::Vector2(-10.8750, 5.6200));
-    obs4.push_back(RVO::Vector2(-10.1250, 30.8200));
-    // Bottom boundary
-    obs5.push_back(RVO::Vector2(-11.0250, 6.0700));
-    obs5.push_back(RVO::Vector2(-12.0750, 5.9200));
-    obs5.push_back(RVO::Vector2(-11.9250, 2.6200));
-    obs5.push_back(RVO::Vector2(18.0750, 2.1700));
-    obs5.push_back(RVO::Vector2(18.0750, 3.3700));
-    obs5.push_back(RVO::Vector2(7.8750, 3.0700));
-    obs5.push_back(RVO::Vector2(7.8750, 4.0));
-    obs5.push_back(RVO::Vector2(-11.0250, 4.0));
-
-    sim_->addObstacle(obs1);
-    sim_->addObstacle(obs2);
-    sim_->addObstacle(obs3);
-    sim_->addObstacle(obs4);
-    sim_->addObstacle(obs5);
+    // TODO: RVO should be able to use occupancy grid information.
+    // TODO: Should publish obstacles to RViz
+    for (size_t i = 0; i < obstacles.size(); ++i) {
+      sim_->addObstacle(obstacles[i]);
+    }
     sim_->processObstacles();
-
-    for (size_t i = 0; i < bots_.size(); ++i) {
-      sim_->addAgent(RVO::Vector2());
-      goals_.push_back(RVO::Vector2());
-    }
-
-    // Shorten path to contains points that have visibility
-    // TODO: change this to RVO's visibility test
-    if (map_ != NULL) {
-      checker_ = new LOSChecker(map_);
-    } else {
-      ROS_WARN("No map specified");
-    }
   }
 
   RVOWrapper::~RVOWrapper() {
@@ -143,8 +100,31 @@ namespace rf {
     nh.param("path_margin", path_margin, 0.1);
     nh.param("goal_tolerance", goal_tol, 0.1);
     nh.param("los_margin", los_margin, 0.1);
-    
-    RVOWrapper *wrapper = new RVOWrapper(bots, id, map);
+
+    vector<vector<RVO::Vector2> > obstacles;
+    if (nh.hasParam("obstacle_file")) {
+      std::string fname;
+      nh.getParam("obstacle_file", fname);
+      ifstream ifs(fname.c_str(), ios::in);
+      std::string line;
+      vector<RVO::Vector2> obstacle;
+
+      while (getline(ifs, line)) {
+        if (line == "===") {
+          if (obstacle.size() > 0) {
+            ROS_DEBUG("Adding obstacle with %lu vertices", obstacle.size());
+            obstacles.push_back(obstacle);
+            obstacle.clear();
+          }
+        } else {
+          float x, y;
+          sscanf(line.c_str(), "%f %f", &x, &y);
+          obstacle.push_back(RVO::Vector2(x, y));
+        }
+      }
+    }
+    ROS_INFO("Loaded %lu obstacles", obstacles.size());
+    RVOWrapper *wrapper = new RVOWrapper(bots, id, map, obstacles);
     wrapper->setAgentDefaults(neighborDist, maxNeighbors, timeHorizon,
                               timeHorizonObst, radius, maxSpeed);
     wrapper->setTimestep(timestep);
@@ -152,7 +132,8 @@ namespace rf {
     wrapper->setWaypointSpacing(waypoint_spacing);
     wrapper->setPathMargin(path_margin);
     wrapper->setGoalTolerance(goal_tol);
-    wrapper->setLOSMargin(los_margin);
+
+    wrapper->addAgents();
     return wrapper;
   }
   
@@ -163,12 +144,22 @@ namespace rf {
                            timeHorizonObst, radius, maxSpeed);
   }
 
+  
+  void RVOWrapper::addAgents() {
+    for (size_t i = 0; i < bots_.size(); ++i) {
+      sim_->addAgent(RVO::Vector2());
+    }
+  }
 
   bool RVOWrapper::step() {
     // TODO: synchornize ROS clock and sim clock.
     sim_->doStep();
     RVO::Vector2 vel = sim_->getAgentVelocity(id_);
+    // ROS_INFO("%s's actual xy_vel:    % 6.2f % 6.2f",
+    //          bots_[id_]->getName().c_str(), vel.x(), vel.y());
 
+    // ROS_INFO("Sim vel: % 6.2f % 6.2f", vel.x(), vel.y());
+    
     // Solve for control inputs for standard kinematic model with feedback
     // linearization; see (eqn 2) in "Smooth and Collision-Free Navigation for
     // Multiple Robots Under Differential-Drive Constraints"
@@ -189,7 +180,7 @@ namespace rf {
     bool at_dest = false;
     double vx;
     double vw;
-    if (RVO::absSq(sim_->getAgentPosition(id_) - goals_[id_]) > goal_tol_ * goal_tol_) {
+    if (RVO::abs(sim_->getAgentPosition(id_) - goal_) > goal_tol_) {
       vx = (u(0) + u(1)) / 2.0;
       vw = (u(1) - u(0)) / L;
     } else {
@@ -210,55 +201,48 @@ namespace rf {
     // ROS_INFO("command:   % 6.2f % 6.2f\n", vx, vw);
   }
 
-  bool RVOWrapper::setGoal(const geometry_msgs::Pose& p) {
-    goals_[id_] = pose_to_rvo(p);
+  std::vector<geometry_msgs::Pose> RVOWrapper::setGoal(const geometry_msgs::Pose& p) {
+    RVO::Vector2 start = pose_to_rvo(bots_[id_]->getPose());
+    goal_ = pose_to_rvo(p);
     waypoints_.clear();
-    RVO::Vector2 start = sim_->getAgentPosition(id_);
-    RVO::Vector2 stop = goals_[id_];
-    // ROS_INFO("Current pose: % 6.2f % 6.2f", start.x(), start.y());
-    // ROS_INFO("Got goal: % 6.2f % 6.2f", goals_[id_].x(), goals_[id_].y());
-    
-    PointVector path = dijkstra(rvo_to_eig(start), rvo_to_eig(stop), map_, path_margin_);
-    if (path.size() == 0) {
-      return false;
-    }
-  
-    waypoints_.push_back(eig_to_rvo(path[0]));
-    for (size_t i = 0; i < path.size() - 1; ++i) {
-      const RVO::Vector2& prev = waypoints_.back();
-      const Eigen::Vector2f& curr = path[i];
-      if (!checker_->LineOfSight(prev.x(), prev.y(), curr(0), curr(1), los_margin_) ||
-          hypot(prev.x() - curr(0), prev.y() - curr(1)) >= way_spacing_) {
-        waypoints_.push_back(eig_to_rvo(path[i-1]));
+
+    PointVector path = dijkstra(rvo_to_eig(start), rvo_to_eig(goal_), map_, path_margin_);
+    if (path.size() != 0) {  
+      waypoints_.push_back(eig_to_rvo(path[0]));
+      for (size_t i = 0; i < path.size() - 1; ++i) {
+        const RVO::Vector2& prev = waypoints_.back();
+        const RVO::Vector2& curr = eig_to_rvo(path[i]);
+        if (!sim_->queryVisibility(prev, curr) || RVO::abs(prev - curr) > way_spacing_) {
+          waypoints_.push_back(eig_to_rvo(path[i-1]));
+        }
       }
+      waypoints_.push_back(eig_to_rvo(path.back()));
+      ROS_INFO("Waypoint path has %zu vertices", waypoints_.size());
     }
-    waypoints_.push_back(eig_to_rvo(path.back()));
-    // ROS_INFO("Waypoint path has %zu vertices", waypoints_.size());
-    // for (size_t i = 0; i < waypoints_.size(); ++i ) {
-    //   ROS_INFO("  %3zu: % 6.1f % 6.1f    dist: % 6.1f",
-    //            i, waypoints_[i].x(), waypoints_[i].y(),
-    //            map_get_cell(map_, waypoints_[i].x(), waypoints_[i].y(), 0.0)->occ_dist);
-    // }
-    return true;
+
+    std::vector<geometry_msgs::Pose> ros_path;
+    ros_path.resize(waypoints_.size());
+    for (size_t i = 0; i < waypoints_.size(); ++i) {
+      tf::poseTFToMsg(tf::Pose(tf::createIdentityQuaternion(),
+                               tf::Vector3(waypoints_[i].x(), waypoints_[i].y(), 0)),
+                      ros_path[i]);
+    }
+    return ros_path;
   }
 
   bool RVOWrapper::getLeadGoal(RVO::Vector2 *goal) {
     // Direct robot towards successor of point that it is closest to
     float min_dist = std::numeric_limits<float>::infinity();
     int min_ind = -1;
-    RVO::Vector2 pos = sim_->getAgentPosition(id_);
+    RVO::Vector2 pos =  sim_->getAgentPosition(id_);
     for (size_t wayind = 0; wayind < waypoints_.size(); ++wayind) {
-      if (!checker_->LineOfSight(pos.x(), pos.y(),
-                                 waypoints_[wayind].x(), waypoints_[wayind].y(),
-                                 los_margin_)) {
-        // ROS_INFO(" Skipping %zu, no LOS", wayind);
+      if (!sim_->queryVisibility(pos, waypoints_[wayind], sim_->getAgentRadius(id_))) {
         continue;
       }
       float dist = RVO::absSq(pos - waypoints_[wayind]);
       if (dist < min_dist) {
         min_dist = dist;
         min_ind = wayind;
-        // ROS_INFO(" %i is now closest % 7.1f", min_ind, min_dist);
       }
     }
 
@@ -266,86 +250,86 @@ namespace rf {
       *goal = RVO::Vector2();
       return false;
     } else {
-      if (static_cast<unsigned>(min_ind + 1) < waypoints_.size() &&
-          checker_->LineOfSight(pos.x(), pos.y(),
-                                waypoints_[min_ind+1].x(), waypoints_[min_ind+1].y(),
-                                los_margin_)) {
+      while (static_cast<unsigned>(min_ind + 1) < waypoints_.size() &&
+             sim_->queryVisibility(pos, waypoints_[min_ind+1], los_margin_)) {
         ++min_ind;
       }
+      if (!sim_->queryVisibility(pos, waypoints_[min_ind])) {
+        ROS_WARN("RVOWrapper::getLeadGoal() %s's next waypoint is not visible",
+                 bots_[id_]->getName().c_str());
+      }
+      
       *goal = waypoints_[min_ind] - pos;
-      // ROS_INFO_THROTTLE(1.0, "Advancing towards goal");
-      // ROS_INFO_THROTTLE(1.0, "occ dist: % 6.2f",
+      if (RVO::absSq(*goal) > 1.0f) {
+        *goal = RVO::normalize(*goal);
+      }
+      
+      // double t = 0.0;
+      // ROS_INFO_THROTTLE(t, "Advancing towards goal");
+      // ROS_INFO_THROTTLE(t, "occ dist: % 6.2f",
       //                   map_get_cell(map_, pos.x(), pos.y(), 0.0)->occ_dist);
-      // ROS_INFO_THROTTLE(1.0, "min_ind: %i", min_ind);
-      // ROS_INFO_THROTTLE(1.0, "position:   % 6.2f % 6.2f", pos.x(), pos.y());
-      // ROS_INFO_THROTTLE(1.0, "waypoint:   % 6.2f % 6.2f",
+      // ROS_INFO_THROTTLE(t, "min_ind: %i", min_ind);
+      // ROS_INFO_THROTTLE(t, "position:   % 6.2f % 6.2f", pos.x(), pos.y());
+      // ROS_INFO_THROTTLE(t, "waypoint:   % 6.2f % 6.2f",
       //                   waypoints_[min_ind].x(), waypoints_[min_ind].y());
-      // ROS_INFO_THROTTLE(1.0, "goalVec:    % 6.2f % 6.2f",
-      //                   goalVector.x(), goalVector.y());
-      return true;      
+      // ROS_INFO_THROTTLE(t, "%s's actual goalVec:    % 6.2f % 6.2f",
+      //                    bots_[id_]->getName().c_str(), goal->x(), goal->y());
+      // ROS_INFO_THROTTLE(t, "Num obs: %zu", sim_->getAgentNumObstacleNeighbors(id_));
+      return true;
     }
   }
 
   bool RVOWrapper::update() {
     /* Update position, speed, and goals of the agents */
     bool have_everything = true;
+    ros::Duration d(2.0);
+    
     for (size_t i = 0; i < sim_->getNumAgents(); ++i) {
       BotClient *bot = bots_[i];
-      if (bot->havePose()) {
+      if (bot->havePose(d)) {
         RVO::Vector2 position = pose_to_rvo(bot->getPose());
-        // ROS_INFO_THROTTLE(1.0, "%zu position: % 6.2f % 6.2f", i, position.x(), position.y());
         sim_->setAgentPosition(i, position);
-
-        if (bot->haveOdom()) {
-          RVO::Vector2 vel = odom_to_rvo(bot->getOdom(), bot->getPose());
-          sim_->setAgentVelocity(i, vel);
-        } else {
-          ROS_WARN("No odom info for %s (id: %zu)", bot->getName().c_str(), i);
-          have_everything = false;
-        }
-
-        if (i != id_) {
-          goals_[i] = position;
-        }
       } else {
         ROS_WARN("No pose info for %s (id: %zu)", bot->getName().c_str(), i);
         have_everything = false;
       }
+      
+      if (bot->haveOdom(d)) {
+        RVO::Vector2 vel = odom_to_rvo(bot->getOdom(), bot->getPose());
+        sim_->setAgentVelocity(i, vel);
+      } else {
+        ROS_WARN("No odom info for %s (id: %zu)", bot->getName().c_str(), i);
+        have_everything = false;
+      }
     }
+
     if (!have_everything) {
       ROS_WARN("Not performing update");
       return false;
     }
 
-    /*
-     * Set the preferred velocity to be a vector of unit magnitude (speed) in the
-     * direction of the goal.
-     */
+    // Set preferred velocities
     bool ok = true;
     for (size_t i = 0; i < sim_->getNumAgents(); ++i) {
       RVO::Vector2 goalVector;
       if (i == id_) {
         ok = getLeadGoal(&goalVector);
+        if (!ok) {
+          ROS_WARN("%s problem getting goal", bots_[id_]->getName().c_str());
+        } else {
+          // Perturb a little to avoid deadlocks due to perfect symmetry.
+          float angle = std::rand() * 2.0f * M_PI / RAND_MAX;
+          float dist = std::rand() * 0.0001f / RAND_MAX;
+          sim_->setAgentPrefVelocity(i, goalVector + 
+                                     dist * RVO::Vector2(std::cos(angle), std::sin(angle)));
+        }
       } else {
-        goalVector = goals_[i] - sim_->getAgentPosition(i);
+        BotClient *bot = bots_[i];
+        RVO::Vector2 goal = odom_to_rvo(bot->getOdom(), bot->getPose());
+        // ROS_INFO("%s thinks %s's xy_vel:  % 6.2f % 6.2f", bots_[id_]->getName().c_str(),
+        // bot->getName().c_str(), goal->x(), goal->y());
+        sim_->setAgentPrefVelocity(i, goalVector);
       }
-      
-      if (RVO::absSq(goalVector) > 1.0f) {
-        goalVector = RVO::normalize(goalVector);
-      }
-      sim_->setAgentPrefVelocity(i, goalVector);
-
-      /*
-       * Perturb a little to avoid deadlocks due to perfect symmetry.
-       */
-      float angle = std::rand() * 2.0f * M_PI / RAND_MAX;
-      float dist = std::rand() * 0.0001f / RAND_MAX;
-
-      sim_->setAgentPrefVelocity(i, sim_->getAgentPrefVelocity(i) +
-                                 dist * RVO::Vector2(std::cos(angle), std::sin(angle)));
-    }
-    if (!ok) {
-      ROS_WARN("Couldn't get waypoint");
     }
     return ok;
   }
@@ -375,6 +359,14 @@ namespace rf {
     wrapper_ = RVOWrapper::ROSInit(pnh_, map_, bots_);
     pnh_.param("timestep", timestep_, 0.1);
     wrapper_->setTimestep(timestep_);
+
+    path_pub_ = nh_.advertise<nav_msgs::Path>("path", 5, true);
+    tf_frame_ = "map"; // TODO: update this variable
+    nav_msgs::Path path;
+    path.header.stamp = ros::Time::now();
+    path.header.frame_id = tf_frame_; 
+    path.poses.resize(0);
+    path_pub_.publish(path);
     ROS_INFO("Done setting up %s",  action_name_.c_str());
   }
 
@@ -394,8 +386,21 @@ namespace rf {
              goal->target_pose.pose.position.x, goal->target_pose.pose.position.y);
 
     wrapper_->update();
+    
+    std::vector<geometry_msgs::Pose> path = wrapper_->setGoal(goal->target_pose.pose);
+    // Publish the path
+    nav_msgs::Path nav_path;
+    nav_path.header.stamp = ros::Time::now();
+    nav_path.header.frame_id = tf_frame_;
+    nav_path.poses.resize(path.size());
+    for (size_t i = 0; i < path.size(); ++i) {
+      nav_path.poses[i].header.stamp = ros::Time::now();
+      nav_path.poses[i].header.frame_id = tf_frame_;
+      nav_path.poses[i].pose = path[i];
+    }
+    path_pub_.publish(nav_path);
 
-    if (!wrapper_->setGoal(goal->target_pose.pose)) {
+    if (path.size() == 0) {
       ROS_WARN("No path found");
       as_.setAborted();
       return;
@@ -421,6 +426,8 @@ namespace rf {
         break;
       }
     }
+    nav_path.poses.resize(0);
+    path_pub_.publish(nav_path);
     bots_[wrapper_->getID()]->pubVel(0.0, 0.0);
   }
   
