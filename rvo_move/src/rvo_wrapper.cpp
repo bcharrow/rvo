@@ -189,16 +189,16 @@ namespace rf {
       at_dest = true;
     }
     bots_[id_]->pubVel(vx, vw);
+    ROS_DEBUG("Theta: % 6.2f", theta);
+    ROS_DEBUG("L: % 6.2f", L);
+    ROS_DEBUG_STREAM("m: " << m);
+    ROS_DEBUG_STREAM("m_inv: " << m.inverse());
+    ROS_DEBUG_STREAM("vel:       " << setprecision(2) << v.transpose());
+    ROS_DEBUG_STREAM("wheel vel: " << setprecision(2) << u.transpose());
+    ROS_DEBUG("sim pose:  % 6.2f % 6.2f", sim_->getAgentPosition(id_).x(),
+             sim_->getAgentPosition(id_).y());
+    ROS_DEBUG("command:   % 6.2f % 6.2f\n", vx, vw);
     return at_dest;
-    // ROS_INFO("Theta: % 6.2f", theta);
-    // ROS_INFO("L: % 6.2f", L);
-    // ROS_INFO_STREAM("m: " << m);
-    // ROS_INFO_STREAM("m_inv: " << m.inverse());
-    // ROS_INFO_STREAM("vel:       " << setprecision(2) << v.transpose());
-    // ROS_INFO_STREAM("wheel vel: " << setprecision(2) << u.transpose());
-    // ROS_INFO("sim pose:  % 6.2f % 6.2f", sim_->getAgentPosition(id_).x(),
-    //          sim_->getAgentPosition(id_).y());
-    // ROS_INFO("command:   % 6.2f % 6.2f\n", vx, vw);
   }
 
   std::vector<geometry_msgs::Pose> RVOWrapper::setGoal(const geometry_msgs::Pose& p) {
@@ -212,12 +212,13 @@ namespace rf {
       for (size_t i = 0; i < path.size() - 1; ++i) {
         const RVO::Vector2& prev = waypoints_.back();
         const RVO::Vector2& curr = eig_to_rvo(path[i]);
-        if (!sim_->queryVisibility(prev, curr) || RVO::abs(prev - curr) > way_spacing_) {
+        if (!sim_->queryVisibility(prev, curr, los_margin_) ||
+            RVO::abs(prev - curr) > way_spacing_) {
           waypoints_.push_back(eig_to_rvo(path[i-1]));
         }
       }
       waypoints_.push_back(eig_to_rvo(path.back()));
-      ROS_INFO("Waypoint path has %zu vertices", waypoints_.size());
+      ROS_DEBUG("Waypoint path has %zu vertices", waypoints_.size());
     }
 
     std::vector<geometry_msgs::Pose> ros_path;
@@ -264,23 +265,22 @@ namespace rf {
         *goal = RVO::normalize(*goal);
       }
       
-      // double t = 0.0;
-      // ROS_INFO_THROTTLE(t, "Advancing towards goal");
-      // ROS_INFO_THROTTLE(t, "occ dist: % 6.2f",
-      //                   map_get_cell(map_, pos.x(), pos.y(), 0.0)->occ_dist);
-      // ROS_INFO_THROTTLE(t, "min_ind: %i", min_ind);
-      // ROS_INFO_THROTTLE(t, "position:   % 6.2f % 6.2f", pos.x(), pos.y());
-      // ROS_INFO_THROTTLE(t, "waypoint:   % 6.2f % 6.2f",
-      //                   waypoints_[min_ind].x(), waypoints_[min_ind].y());
-      // ROS_INFO_THROTTLE(t, "%s's actual goalVec:    % 6.2f % 6.2f",
-      //                    bots_[id_]->getName().c_str(), goal->x(), goal->y());
-      // ROS_INFO_THROTTLE(t, "Num obs: %zu", sim_->getAgentNumObstacleNeighbors(id_));
+      ROS_DEBUG("Advancing towards goal");
+      ROS_DEBUG("occ dist: % 6.2f",
+                map_get_cell(map_, pos.x(), pos.y(), 0.0)->occ_dist);
+      ROS_DEBUG("min_ind: %i", min_ind);
+      ROS_DEBUG("position:   % 6.2f % 6.2f", pos.x(), pos.y());
+      ROS_DEBUG("waypoint:   % 6.2f % 6.2f",
+                waypoints_[min_ind].x(), waypoints_[min_ind].y());
+      ROS_DEBUG("%s's actual goalVec: % 6.2f % 6.2f",
+                bots_[id_]->getName().c_str(), goal->x(), goal->y());
+      ROS_DEBUG("Num obs: %zu", sim_->getAgentNumObstacleNeighbors(id_));
       return true;
     }
   }
 
-  bool RVOWrapper::update() {
-    /* Update position, speed, and goals of the agents */
+  bool RVOWrapper::syncState() {
+    // Update RVO simulator with latest position & velocitys from ROS
     bool have_everything = true;
     ros::Duration d(2.0);
     
@@ -303,11 +303,10 @@ namespace rf {
       }
     }
 
-    if (!have_everything) {
-      ROS_WARN("Not performing update");
-      return false;
-    }
+    return have_everything;
+  }
 
+  bool RVOWrapper::setVelocities() {
     // Set preferred velocities
     bool ok = true;
     for (size_t i = 0; i < sim_->getNumAgents(); ++i) {
@@ -326,8 +325,8 @@ namespace rf {
       } else {
         BotClient *bot = bots_[i];
         RVO::Vector2 goal = odom_to_rvo(bot->getOdom(), bot->getPose());
-        // ROS_INFO("%s thinks %s's xy_vel:  % 6.2f % 6.2f", bots_[id_]->getName().c_str(),
-        // bot->getName().c_str(), goal->x(), goal->y());
+        ROS_DEBUG("%s thinks %s's xy_vel:  % 6.2f % 6.2f", bots_[id_]->getName().c_str(),
+                  bot->getName().c_str(), goal.x(), goal.y());
         sim_->setAgentPrefVelocity(i, goalVector);
       }
     }
@@ -380,12 +379,10 @@ namespace rf {
   
   void MoveServer::executeCB(const rvo_move::MoveGoalConstPtr &goal) {
     bool success = true;
-    std::string prefix = action_name_ + "::MoveServer::executeCB()";
+    std::string prefix = action_name_ + "::MoveServer";
     const char *pref = prefix.c_str();
-    ROS_INFO("%s: got request: (% 7.2f, % 7.2f)", pref,
+    ROS_INFO("%s got request: (% 7.2f, % 7.2f)", pref,
              goal->target_pose.pose.position.x, goal->target_pose.pose.position.y);
-
-    wrapper_->update();
     
     std::vector<geometry_msgs::Pose> path = wrapper_->setGoal(goal->target_pose.pose);
     // Publish the path
@@ -405,17 +402,22 @@ namespace rf {
       as_.setAborted();
       return;
     }
-    for (ros::Duration dur(timestep_); ; dur.sleep()) {
+    for (ros::Duration dur(timestep_); ; dur.sleep()) {      
       if (as_.isPreemptRequested() || !ros::ok()) {
-        ROS_INFO("%s: Preempted", action_name_.c_str());
+        ROS_INFO("%s Preempted", action_name_.c_str());
         // set the action state to preempted
         as_.setPreempted();
         success = false;
         break;
       }
 
-      if (!wrapper_->update()) {
-        ROS_WARN("%s Problem while updating RVOWrapper", pref);
+      if (!wrapper_->syncState()) {
+        as_.setAborted();
+        ROS_WARN("%s Problem synchronizing state", pref);
+      }
+     
+      if (!wrapper_->setVelocities()) {
+        ROS_WARN("%s Problem while setting agent velocities", pref);
         as_.setAborted();
         break;
       }

@@ -27,7 +27,8 @@ namespace rf {
     std::vector<geometry_msgs::Pose> setGoal(const geometry_msgs::Pose& p);
 
     size_t getID() const { return id_; }
-    bool update();
+    bool syncState();
+    bool setVelocities();
 
     void setAgentDefaults(float neighborDist, size_t maxNeighbors, float timeHorizon,
                           float timeHorizonObst, float radius, float maxSpeed);
