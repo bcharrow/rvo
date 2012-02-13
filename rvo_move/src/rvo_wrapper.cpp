@@ -112,7 +112,7 @@ namespace rf {
       while (getline(ifs, line)) {
         if (line == "===") {
           if (obstacle.size() > 0) {
-            ROS_DEBUG("Adding obstacle with %lu vertices", obstacle.size());
+            ROS_DEBUG("Adding obstacle with %zu vertices", obstacle.size());
             obstacles.push_back(obstacle);
             obstacle.clear();
           }
@@ -123,7 +123,7 @@ namespace rf {
         }
       }
     }
-    ROS_INFO("Loaded %lu obstacles", obstacles.size());
+    ROS_INFO("Loaded %zu obstacles", obstacles.size());
     RVOWrapper *wrapper = new RVOWrapper(bots, id, map, obstacles);
     wrapper->setAgentDefaults(neighborDist, maxNeighbors, timeHorizon,
                               timeHorizonObst, radius, maxSpeed);
@@ -414,6 +414,7 @@ namespace rf {
       if (!wrapper_->syncState()) {
         as_.setAborted();
         ROS_WARN("%s Problem synchronizing state", pref);
+        break;
       }
      
       if (!wrapper_->setVelocities()) {

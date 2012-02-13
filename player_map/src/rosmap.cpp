@@ -185,7 +185,7 @@ namespace rf {
       for (int newi = ci - 1; newi <= ci + 1; ++newi) {
         for (int newj = cj - 1; newj <= cj + 1; ++newj) {
           // Skip self edges
-          if (newi == ci && newj == cj || !MAP_VALID(map, newi, newj)) {
+          if ((newi == ci && newj == cj) || !MAP_VALID(map, newi, newj)) {
             continue;
           }
           // fprintf(stderr, "  Examining %i %i ", newi, newj);
