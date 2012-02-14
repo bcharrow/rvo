@@ -360,7 +360,7 @@ namespace rf {
     wrapper_->setTimestep(timestep_);
 
     path_pub_ = nh_.advertise<nav_msgs::Path>("path", 5, true);
-    tf_frame_ = "map"; // TODO: update this variable
+    pnh_.param("map_frame_id", tf_frame_, std::string("/map"));
     nav_msgs::Path path;
     path.header.stamp = ros::Time::now();
     path.header.frame_id = tf_frame_; 
