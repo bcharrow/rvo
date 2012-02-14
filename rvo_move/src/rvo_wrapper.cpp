@@ -123,7 +123,11 @@ namespace rf {
         }
       }
     }
-    ROS_INFO("Loaded %zu obstacles", obstacles.size());
+    if (obstacles.size() == 0) {
+      ROS_WARN("NO OBSTACLES LOADED");
+    } else {
+      ROS_INFO("Loaded %zu obstacles", obstacles.size());
+    }
     RVOWrapper *wrapper = new RVOWrapper(bots, id, map, obstacles);
     wrapper->setAgentDefaults(neighborDist, maxNeighbors, timeHorizon,
                               timeHorizonObst, radius, maxSpeed);
@@ -282,7 +286,7 @@ namespace rf {
   bool RVOWrapper::syncState() {
     // Update RVO simulator with latest position & velocitys from ROS
     bool have_everything = true;
-    ros::Duration d(2.0);
+    ros::Duration d(10.0);
     
     for (size_t i = 0; i < sim_->getNumAgents(); ++i) {
       BotClient *bot = bots_[i];
