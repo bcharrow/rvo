@@ -1,13 +1,13 @@
-neighborDist: 10.0
+neighborDist: 5.0
 maxNeighbors: 10
-timeHorizon: 8.0
-timeHorizonObst: 8.0
-radius: 0.19
-maxSpeed: 0.10
-timestep: 0.05
+timeHorizon: 5.0
+timeHorizonObst: 1.0
+radius: 0.28
+maxSpeed: 0.20
+timestep: 0.07
 axel_width: 0.23
+los_margin: 0.25
 
-waypoint_spacing: 0.75
+waypoint_spacing: 0.05
 path_margin: 0.3
 goal_tolerance: 0.15
-los_margin: 0.1
