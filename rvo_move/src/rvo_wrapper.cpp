@@ -382,7 +382,6 @@ namespace rf {
   }
   
   void MoveServer::executeCB(const rvo_move::MoveGoalConstPtr &goal) {
-    bool success = true;
     std::string prefix = action_name_ + "::MoveServer";
     const char *pref = prefix.c_str();
     ROS_INFO("%s got request: (% 7.2f, % 7.2f)", pref,
@@ -407,18 +406,21 @@ namespace rf {
       return;
     }
     for (ros::Duration dur(timestep_); ; dur.sleep()) {      
-      if (as_.isPreemptRequested() || !ros::ok()) {
+      if (!ros::ok()) {
+        ROS_INFO("%s Ros shutdown", action_name_.c_str());
+        as_.setPreempted();
+        break;
+      }
+
+      if (as_.isPreemptRequested()) {
         ROS_INFO("%s Preempted", action_name_.c_str());
         // set the action state to preempted
         as_.setPreempted();
-        success = false;
         break;
       }
 
       if (!wrapper_->syncState()) {
-        as_.setAborted();
         ROS_WARN("%s Problem synchronizing state", pref);
-        break;
       }
      
       if (!wrapper_->setVelocities()) {
@@ -435,7 +437,9 @@ namespace rf {
     }
     nav_path.poses.resize(0);
     path_pub_.publish(nav_path);
-    bots_[wrapper_->getID()]->pubVel(0.0, 0.0);
+    if (!as_.isPreemptRequested()) {
+      bots_[wrapper_->getID()]->pubVel(0.0, 0.0);
+    }
   }
   
   void MoveServer::start() {
