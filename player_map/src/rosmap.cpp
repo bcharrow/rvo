@@ -100,6 +100,9 @@ namespace rf {
   }
 
   bool LOSChecker::LineOfSight(double x1, double y1, double x2, double y2, double max_dist /* = 0.0 */) {
+    if (map_ == NULL) {
+      return true;
+    }
     // March along the line between (x1, y1) and (x2, y2) until the point passes
     // beyond (x2, y2).
     double step_size = map_->scale / 2.0;
