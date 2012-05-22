@@ -1,0 +1,11 @@
+.DS_Store*
+
+build
+bin
+*.so
+*.a
+*~
+
+msg_gen
+srv_gen
+_*.py
