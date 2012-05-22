@@ -3,14 +3,14 @@
        c-space There should be several requests for /player_static_map, and
        then player_map_test should print "maps are identical!" -->
   <node pkg="map_server" name="map_server" type="map_server" output="screen"
-        args="$(find upenn_maps)/maps/levine_towne_nav.yaml">
+        args="$(find rvo_move)/maps/levine_towne_nav.yaml">
     <remap from="/static_map" to="/static_map" />
     <remap from="/map" to="/map" />
   </node>
 
   <node pkg="player_map" name="player_map_server" type="player_map_server" 
         output="screen"
-        args="$(find upenn_maps)/maps/levine_towne_nav.yaml">
+        args="$(find rvo_move)/maps/levine_towne_nav.yaml">
         <remap from="/static_map" to="/player_static_map" />
         <remap from="/map" to="/player_map" />
   </node>
