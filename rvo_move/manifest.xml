@@ -14,10 +14,10 @@
   <depend package="rvo2"/>
   <depend package="actionlib_msgs" />
   <depend package="actionlib" />
-  <depend package="eigen" />
   <depend package="tf" />
   <depend package="player_map" />
 
+  <rosdep name="eigen"/>
   <export>
     <cpp cflags="-I${prefix}/include" lflags="-L${prefix}/lib -lbotclient" />
   </export>

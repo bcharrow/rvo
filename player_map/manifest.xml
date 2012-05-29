@@ -10,12 +10,15 @@
   <url>http://ros.org/wiki/player_map</url>
 
   <depend package="roscpp" />
-  <depend package="eigen" />
   <depend package="nav_msgs" />
   <depend package="map_server" />
 
+  <rosdep name="eigen" />
+  <rosdep name="yaml-cpp" />
+
   <export>
-    <cpp cflags="-I${prefix}/include" lflags="-L${prefix}/lib -lplayermap" />
+    <cpp cflags="`pkg-config --cflags eigen3` -I${prefix}/include" 
+         lflags="-Wl,-rpath,${prefix}/lib -L${prefix}/lib -lplayermap"/>
   </export>
 </package>
 
