@@ -134,6 +134,9 @@ namespace rf {
 
   PointVector dijkstra(const Eigen::Vector2f &start, const Eigen::Vector2f &stop,
                        map_t *map, double max_occ_dist /* = 0.0 */) {
+    typedef pair<int, int> coord_t;
+    typedef pair<float, coord_t> cost_t;  
+    
     int starti = MAP_GXWX(map, start(0)), startj = MAP_GYWY(map, start(1));
     if (!MAP_VALID(map, starti ,startj)) {
       ROS_ERROR("Invalid starting position");
@@ -149,11 +152,22 @@ namespace rf {
     float *costs = new float[ncells];
     int *prev_i = new int[ncells];
     int *prev_j = new int[ncells];
-    for (int k = 0; k < ncells; ++k) {
-      costs[k] = std::numeric_limits<float>::infinity();
-      prev_i[k] = -1;
-      prev_j[k] = -1;
+    
+    // Map is large and initializing costs takes a while.  To speedup,
+    // partially initialize costs in a rectangle surrounding start and stop
+    // positions + margin.  If you run up against boundary, initialize the rest.
+    int margin = 120;
+    coord_t init_ul = make_pair(max(0, min(starti, stopi) - margin),
+                                max(0, min(startj, stopj) - margin));
+    coord_t init_lr = make_pair(min(map->size_x, max(starti, stopi) + margin),
+                                min(map->size_y, max(startj, stopj) + margin));
+    for (int j = init_ul.second; j < init_lr.second; ++j) {
+      for (int i = init_ul.first; i < init_lr.first; ++i) {
+        int ind = MAP_INDEX(map, i, j);
+        costs[ind] = std::numeric_limits<float>::infinity();
+      }
     }
+
     // fprintf(stderr, "Start: %i %i\n", starti, startj);
     // fprintf(stderr, "Stop:  %i %i\n", stopi, stopj);  
   
@@ -163,12 +177,11 @@ namespace rf {
     prev_j[startj] = startj;
   
     // Priority queue mapping cost to index
-    typedef pair<int, int> coord_t;
-    typedef pair<float, coord_t> cost_t;  
     set<cost_t> Q;
     Q.insert(make_pair(0.0, make_pair(starti, startj)));
-
+  
     bool found = false;
+    bool full_init = false;
     while (!Q.empty()) {
       cost_t node = *Q.begin();
       Q.erase(Q.begin());
@@ -183,10 +196,27 @@ namespace rf {
         found = true;
         break;
       }
-    
+
+      // Check if we're neighboring nodes whose costs are uninitialized.
+      if (!full_init &&
+          ((ci + 1 >= init_lr.first) || (ci - 1 <= init_ul.first) ||
+           (cj + 1 >= init_lr.second) || (cj - 1 <= init_ul.second))) {
+        full_init = true;
+        for (int j = 0; j < map->size_y; ++j) {
+          for (int i = 0; i < map->size_x; ++i) {
+            // Only initialize costs that are outside original rectangle
+            if (!(init_ul.first <= i && i < init_lr.first &&
+                  init_ul.second <= j && j < init_lr.second)) {
+              int ind = MAP_INDEX(map, i, j);
+              costs[ind] = std::numeric_limits<float>::infinity();
+            }
+          }
+        }
+      }
+
       // Iterate over neighbors
-      for (int newi = ci - 1; newi <= ci + 1; ++newi) {
-        for (int newj = cj - 1; newj <= cj + 1; ++newj) {
+      for (int newj = cj - 1; newj <= cj + 1; ++newj) {
+        for (int newi = ci - 1; newi <= ci + 1; ++newi) {
           // Skip self edges
           if ((newi == ci && newj == cj) || !MAP_VALID(map, newi, newj)) {
             continue;
