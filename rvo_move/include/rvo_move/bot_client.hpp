@@ -14,7 +14,8 @@ namespace rf {
   class BotClient {
   public:
     BotClient(const ros::NodeHandle &parent, std::string prefix);
-
+    virtual ~BotClient();
+    
     void odomCallback(const nav_msgs::Odometry &msg);
     void poseCallback(const geometry_msgs::PoseWithCovarianceStamped &msg);
     void velCallback(const geometry_msgs::Twist &msg);
