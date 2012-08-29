@@ -132,11 +132,24 @@ namespace rf {
     return true;
   }
 
-  PointVector dijkstra(const Eigen::Vector2f &start, const Eigen::Vector2f &stop,
-                       map_t *map, double max_occ_dist /* = 0.0 */) {
-    typedef pair<int, int> coord_t;
-    typedef pair<float, coord_t> cost_t;  
+
+  struct Node {
+    Node(const pair<int, int> &c, float d, float h) :
+      coord(c), true_dist(d), heuristic(h) { }
+    pair<int, int> coord;
+    float true_dist;
+    float heuristic;
+  };
+
+  struct NodeCompare {
+    bool operator()(const Node &lnode, const Node &rnode) {
+      return make_pair(lnode.heuristic, lnode.coord) <
+        make_pair(rnode.heuristic, rnode.coord);
+    }
+  };
     
+  PointVector astar(const Eigen::Vector2f &start, const Eigen::Vector2f &stop,
+                    map_t *map, double max_occ_dist /* = 0.0 */) {
     int starti = MAP_GXWX(map, start(0)), startj = MAP_GYWY(map, start(1));
     if (!MAP_VALID(map, starti ,startj)) {
       ROS_ERROR("Invalid starting position");
@@ -149,7 +162,9 @@ namespace rf {
     }
 
     const int ncells = map->size_x * map->size_y;
+    // True cost to goal from cell
     float *costs = new float[ncells];
+    // (i,j) coordinates of node with lowest cost to current node
     int *prev_i = new int[ncells];
     int *prev_j = new int[ncells];
     
@@ -157,10 +172,11 @@ namespace rf {
     // partially initialize costs in a rectangle surrounding start and stop
     // positions + margin.  If you run up against boundary, initialize the rest.
     int margin = 120;
-    coord_t init_ul = make_pair(max(0, min(starti, stopi) - margin),
-                                max(0, min(startj, stopj) - margin));
-    coord_t init_lr = make_pair(min(map->size_x, max(starti, stopi) + margin),
-                                min(map->size_y, max(startj, stopj) + margin));
+    pair<int, int> init_ul = make_pair(max(0, min(starti, stopi) - margin),
+                                       max(0, min(startj, stopj) - margin));
+    pair<int, int> init_lr =
+      make_pair(min(map->size_x, max(starti, stopi) + margin),
+                min(map->size_y, max(startj, stopj) + margin));
     for (int j = init_ul.second; j < init_lr.second; ++j) {
       for (int i = init_ul.first; i < init_lr.first; ++i) {
         int ind = MAP_INDEX(map, i, j);
@@ -177,21 +193,21 @@ namespace rf {
     prev_j[startj] = startj;
   
     // Priority queue mapping cost to index
-    set<cost_t> Q;
-    Q.insert(make_pair(0.0, make_pair(starti, startj)));
-  
+    set<Node, NodeCompare> Q;
+    Q.insert(Node(make_pair(starti, startj), 0.0, 0.0));
     bool found = false;
     bool full_init = false;
     while (!Q.empty()) {
-      cost_t node = *Q.begin();
+      // Copy node and then erase it
+      Node curr_node = *Q.begin();
       Q.erase(Q.begin());
-      double cost = node.first;
-      coord_t coord = node.second;
-      int ci = coord.first;
-      int cj = coord.second;
+      // float cost = curr_node.true_dist;
+      int ci = curr_node.coord.first;
+      int cj = curr_node.coord.second;
+     
+      costs[MAP_INDEX(map, ci, cj)] = curr_node.true_dist;
       // fprintf(stderr, "At %i %i (cost = %6.2f)  % 7.2f % 7.2f \n",
-      //         ci, cj, cost, MAP_WXGX(map, ci), MAP_WYGY(map, cj));
-    
+      //     ci, cj, curr_node.true_dist, MAP_WXGX(map, ci), MAP_WYGY(map, cj));
       if (ci == stopi && cj == stopj) {
         found = true;
         break;
@@ -231,18 +247,20 @@ namespace rf {
             continue;
           }
           // fprintf(stderr, "free\n");        
-          double edge_cost = ci == newi || cj == newj ? 1 : sqrt(2);        
-          if (edge_cost + cost < costs[index]) {
-            // fprintf(stderr, "    Better path: new cost= % 6.2f\n", edge_cost + cost);
+          double edge_cost = ci == newi || cj == newj ? 1 : sqrt(2);
+          double heur_cost = hypot(newi - stopi, newj - stopj);
+          double ttl_cost = edge_cost + curr_node.true_dist + heur_cost;
+          if (ttl_cost < costs[index]) {
+            // fprintf(stderr, "    Better path: new cost= % 6.2f\n", ttl_cost);
+            // If node has finite cost, it's in queue and needs to be removed
             if (!isinf(costs[index])) {
-              set<cost_t>::iterator it = Q.find(make_pair(costs[index], make_pair(newi, newj)));
-              Q.erase(it);
-            }
-            
-            costs[index] = edge_cost + cost;
+              Q.erase(Node(make_pair(newi, newj), costs[index], 0.0));
+            }            
+            costs[index] = ttl_cost;
             prev_i[index] = ci;
             prev_j[index] = cj;
-            Q.insert(make_pair(costs[index], make_pair(newi, newj)));
+            Q.insert(Node(make_pair(newi, newj),
+                          edge_cost + curr_node.true_dist, ttl_cost));
           }
         }
       }

@@ -210,7 +210,7 @@ namespace rf {
     goal_ = pose_to_rvo(p);
     waypoints_.clear();
 
-    PointVector path = dijkstra(rvo_to_eig(start), rvo_to_eig(goal_), map_, path_margin_);
+    PointVector path = astar(rvo_to_eig(start), rvo_to_eig(goal_), map_, path_margin_);
     if (path.size() != 0) {  
       waypoints_.push_back(eig_to_rvo(path[0]));
       for (size_t i = 0; i < path.size() - 1; ++i) {
