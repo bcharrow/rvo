@@ -9,6 +9,24 @@ classdef Map < handle
         wall_ij;
     end
     
+    methods(Static)
+        function [new_map] = FromYAML(path, pad_xy)
+            if nargin < 2
+                pad_xy = [0 0];
+            end
+            dict = read_yaml(path);
+            base = fileparts(path);
+            if base
+                map_path = [base filesep dict('image')];
+            else
+                map_path = dict('image');
+            end
+            img = imread(map_path);
+            origin = dict('origin');
+            new_map = Map(img, dict('resolution'), origin(1:2), pad_xy);
+        end
+    end
+
     methods
         function [obj] = Map(grid, res_xy, offset, pad_xy)
             if nargin < 4

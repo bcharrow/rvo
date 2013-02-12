@@ -9,3 +9,5 @@ bin
 msg_gen
 srv_gen
 _*.py
+
+rvo_move/src/rvo_move/
