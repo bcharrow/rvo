@@ -15,6 +15,11 @@ namespace rf {
     vel_pub_ = nh_->advertise<geometry_msgs::Twist>("motor/cmd_vel", 5);
   }
 
+  BotClient::~BotClient() {
+    delete nh_;
+  }
+
+  
   void BotClient::odomCallback(const nav_msgs::Odometry &msg) {
     boost::mutex::scoped_lock lock(mutex_);
     got_odom_ = true;

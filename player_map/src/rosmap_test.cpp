@@ -12,7 +12,7 @@ enum {
   OCCUPIED = 1
 };
 
-class DijkstraTest : public testing::Test {
+class AstarTest : public testing::Test {
 protected:
   void SetUp() {
     // Make 3x3 completely free map centered at origin
@@ -54,37 +54,37 @@ protected:
   map_t *Map3x3_, *Map100x100_;
 };
 
-TEST_F(DijkstraTest, OneStepRight) {
+TEST_F(AstarTest, OneStepRight) {
   Vector2f start(0, 0), stop(0, 1);
-  PointVector path = dijkstra(start, stop, Map3x3_);
+  PointVector path = astar(start, stop, Map3x3_);
   ASSERT_EQ(path.size(), (unsigned)2);
   EXPECT_EQ(path[0], start);
   EXPECT_EQ(path[1], stop);  
 }
 
-TEST_F(DijkstraTest, OneStepDiag) {
+TEST_F(AstarTest, OneStepDiag) {
   Vector2f start(0, 0), stop(1, 1);
-  PointVector path = dijkstra(start, stop, Map3x3_);
+  PointVector path = astar(start, stop, Map3x3_);
   ASSERT_EQ(path.size(), (unsigned)2);
   EXPECT_EQ(path[0], start);  
   EXPECT_EQ(path[1], stop);
 }
 
-TEST_F(DijkstraTest, TwoSteps) {
+TEST_F(AstarTest, TwoSteps) {
   Vector2f start(-1, -1), stop(1, 1);
-  PointVector path = dijkstra(start, stop, Map3x3_);
+  PointVector path = astar(start, stop, Map3x3_);
   ASSERT_EQ(path.size(), (unsigned)3);
   EXPECT_EQ(path[0], start);
   EXPECT_EQ(path[1], Vector2f(0, 0));
   EXPECT_EQ(path[2], stop);
 }
 
-TEST_F(DijkstraTest, Obstacles) {
+TEST_F(AstarTest, Obstacles) {
   Vector2f start(-1, -1), stop(1, -1);
   map_get_cell(Map3x3_, 0.0, 0.0, 0)->occ_state = OCCUPIED;
   map_get_cell(Map3x3_, 0.0, -1.0, 0)->occ_state = OCCUPIED;
   
-  PointVector path = dijkstra(start, stop, Map3x3_);
+  PointVector path = astar(start, stop, Map3x3_);
   ASSERT_EQ(path.size(), (unsigned)5);
   EXPECT_EQ(path[0], start);  
   EXPECT_EQ(path[1], Vector2f(-1, 0));
@@ -93,10 +93,10 @@ TEST_F(DijkstraTest, Obstacles) {
   EXPECT_EQ(path[4], Vector2f(1, -1));
 }
 
-TEST_F(DijkstraTest, BiggerMap) {
+TEST_F(AstarTest, BiggerMap) {
   Vector2f start(-50, -50), stop(49, 49);
   
-  PointVector path = dijkstra(start, stop, Map100x100_);
+  PointVector path = astar(start, stop, Map100x100_);
   ASSERT_EQ(path.size(), (unsigned)100);
 }
 

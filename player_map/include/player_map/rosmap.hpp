@@ -22,8 +22,8 @@ namespace rf {
   };
 
   typedef std::vector<Eigen::Vector2f, Eigen::aligned_allocator<Eigen::Vector2f> > PointVector;
-  PointVector dijkstra(const Eigen::Vector2f &start, const Eigen::Vector2f &stop,
-                       map_t *map, double max_occ_dist = 0.0);
+  PointVector astar(const Eigen::Vector2f &start, const Eigen::Vector2f &stop,
+                    map_t *map, double max_occ_dist = 0.0);
 }
 
 #endif
