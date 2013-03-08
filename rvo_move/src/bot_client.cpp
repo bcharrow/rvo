@@ -10,7 +10,7 @@ namespace rf {
     parent.param(prefix, name_, prefix);
     nh_ = new ros::NodeHandle(name_);
     pose_sub_ = nh_->subscribe("amcl_pose", 5, &BotClient::poseCallback, this);
-    odom_sub_ = nh_->subscribe("laser_odom/lodom", 5, &BotClient::odomCallback, this);
+    odom_sub_ = nh_->subscribe("odom", 5, &BotClient::odomCallback, this);
 
     vel_pub_ = nh_->advertise<geometry_msgs::Twist>("motor/cmd_vel", 5);
   }

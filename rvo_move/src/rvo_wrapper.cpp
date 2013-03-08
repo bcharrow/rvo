@@ -302,7 +302,8 @@ namespace rf {
         RVO::Vector2 vel = odom_to_rvo(bot->getOdom(), bot->getPose());
         sim_->setAgentVelocity(i, vel);
       } else {
-        ROS_WARN("No odom info for %s (id: %zu)", bot->getName().c_str(), i);
+        ROS_WARN_THROTTLE(1.0, "No odom info for %s (id: %zu)",
+                          bot->getName().c_str(), i);
         have_everything = false;
       }
     }
@@ -420,7 +421,7 @@ namespace rf {
       }
 
       if (!wrapper_->syncState()) {
-        ROS_WARN("%s Problem synchronizing state", pref);
+        ROS_WARN_THROTTLE(1.0, "%s Problem synchronizing state", pref);
       }
      
       if (!wrapper_->setVelocities()) {
@@ -437,7 +438,7 @@ namespace rf {
     }
     nav_path.poses.resize(0);
     path_pub_.publish(nav_path);
-    if (!as_.isPreemptRequested()) {
+    if (!as_.isNewGoalAvailable()) {
       bots_[wrapper_->getID()]->pubVel(0.0, 0.0);
     }
   }
