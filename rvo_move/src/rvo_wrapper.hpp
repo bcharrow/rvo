@@ -22,7 +22,7 @@ namespace rf {
     ~RVOWrapper();
 
     static RVOWrapper* ROSInit(const ros::NodeHandle& nh, map_t *map, std::vector<BotClient*> bots);
-    
+
     bool step();
     std::vector<geometry_msgs::Pose> setGoal(const geometry_msgs::Pose& p);
 
@@ -38,11 +38,12 @@ namespace rf {
     void setPathMargin(float margin) { path_margin_ = margin; }
     void setGoalTolerance(float tol) { goal_tol_ = tol; }
     void setLOSMargin(float marg) { los_margin_ = marg; }
+    void setMaxSpeed(float marg) { max_speed_ = marg; }
     void addAgents();
   private:
     bool getLeadGoal(RVO::Vector2 *goal);
     bool getOtherGoal(int bot_id, RVO::Vector2 *goal);
-    
+
     RVO::RVOSimulator *sim_;
     std::vector<rf::BotClient *> bots_;
     RVO::Vector2 goal_;
@@ -50,7 +51,7 @@ namespace rf {
     map_t *map_;
     LOSChecker *checker_;
     size_t id_;
-    
+
     float max_dist_;
     float axel_width_;
     float goal_tol_;
@@ -58,6 +59,7 @@ namespace rf {
     float way_spacing_;
     float timestep_;
     float los_margin_;
+    double max_speed_;
   };
 
   class MoveServer {

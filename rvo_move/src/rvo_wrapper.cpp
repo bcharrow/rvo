@@ -2,6 +2,7 @@
 #include <fstream>
 #include <tf/tf.h>
 
+#include <angles/angles.h>
 
 #include <nav_msgs/Path.h>
 
@@ -14,10 +15,15 @@ RVO::Vector2 pose_to_rvo(const geometry_msgs::Pose& p) {
   return RVO::Vector2(p.position.x, p.position.y);
 }
 
-double quat_angle(const geometry_msgs::Quaternion& quat) {
-  tf::Quaternion q;
-  tf::quaternionMsgToTF(quat, q);
-  return copysign(q.getAngle(), q.getAxis().z());
+bool quat_angle(const geometry_msgs::Quaternion& msg, double *angle) {
+  tf::Quaternion q = tf::Quaternion(msg.x, msg.y, msg.z, msg.w);
+  if (fabs(q.length2() - 1) > 1e-4) {
+    // ROS_WARN_THROTTLE(1.0, "Quaternion not properly normalized");
+    return false;
+  } else {
+    *angle = tf::getYaw(q);
+    return true;
+  }
 }
 
 RVO::Vector2 odom_to_rvo(const nav_msgs::Odometry& odom,
@@ -25,7 +31,11 @@ RVO::Vector2 odom_to_rvo(const nav_msgs::Odometry& odom,
   double vx = odom.twist.twist.linear.x;
   double vw = odom.twist.twist.linear.z;
 
-  double theta = quat_angle(p.orientation);
+  double theta;
+  if (!quat_angle(p.orientation, &theta)) {
+    ROS_WARN_THROTTLE(1.0, "odom_to_rvo()");
+    return RVO::Vector2(0.0, 0.0);
+  }
   // Rotate to get velocity in world frame
   double xdot = vx * cos(theta) - vw * sin(theta);
   double ydot = vx * sin(theta) + vw * cos(theta);
@@ -52,22 +62,22 @@ namespace rf {
   RVOWrapper::RVOWrapper(vector<BotClient *> bots, size_t id, map_t *map,
                          const vector<vector<RVO::Vector2> > &obstacles) :
     bots_(bots), map_(map), id_(id), axel_width_(0.23), goal_tol_(0.1),
-    path_margin_(0.2), timestep_(0.1), los_margin_(0.1) {
+    path_margin_(0.2), timestep_(0.1), los_margin_(0.1), max_speed_(0.3) {
     if (id >= bots_.size()) {
       stringstream ss;
       ss << "RVOWrapper::RVOWrapper(): Bot id=" << id << " >= number of bots=" << bots_.size();
       throw std::runtime_error(ss.str());
     }
-    
+
     RVO::Vector2 velocity(0.0, 0.0);
     float neighborDist = 3.0, timeHorizon = 2.0, timeHorizonObst = 2.0;
-    float radius = 0.25, maxSpeed = 0.2;
+    float radius = 0.25;
     size_t maxNeighbors = 10;
 
     sim_ = new RVO::RVOSimulator();
     sim_->setAgentDefaults(neighborDist, maxNeighbors, timeHorizon,
-                           timeHorizonObst, radius, maxSpeed, velocity);
-    sim_->setTimeStep(timestep_);    
+                           timeHorizonObst, radius, max_speed_, velocity);
+    sim_->setTimeStep(timestep_);
 
     // TODO: RVO should be able to use occupancy grid information.
     // TODO: Should publish obstacles to RViz
@@ -93,7 +103,7 @@ namespace rf {
     nh.param("timeHorizonObst", timeHorizonObst, 2.0);
     nh.param("radius", radius, 0.05);
     nh.param("maxSpeed", maxSpeed, 3.0);
-    nh.param("id", id, 0);
+    nh.param("id", id, -1);
     nh.param("timestep", timestep, 0.1);
     nh.param("axel_width", axel_width, 0.23);
     nh.param("waypoint_spacing", waypoint_spacing, 0.75);
@@ -101,6 +111,21 @@ namespace rf {
     nh.param("goal_tolerance", goal_tol, 0.1);
     nh.param("los_margin", los_margin, 0.1);
 
+    string my_namespace = getenv("ROS_NAMESPACE");
+    if (id == -1) {
+      for (size_t i = 0; i < bots.size(); ++i) {
+        if (my_namespace == bots[i]->getName()) {
+          ROS_INFO("My id is %zu", i);
+          id = i;
+          break;
+        }
+      }
+      if (id == -1) {
+        ROS_ERROR("Coudln't find namespace among robots and id param not set");
+        ROS_ERROR("my_namespace = %s", my_namespace.c_str());
+        ROS_BREAK();
+      }
+    }
     vector<vector<RVO::Vector2> > obstacles;
     if (nh.hasParam("obstacle_file")) {
       std::string fname;
@@ -136,11 +161,11 @@ namespace rf {
     wrapper->setWaypointSpacing(waypoint_spacing);
     wrapper->setPathMargin(path_margin);
     wrapper->setGoalTolerance(goal_tol);
-
+    wrapper->setMaxSpeed(maxSpeed);
     wrapper->addAgents();
     return wrapper;
   }
-  
+
   void RVOWrapper::setAgentDefaults(float neighborDist, size_t maxNeighbors,
                                     float timeHorizon, float timeHorizonObst,
                                     float radius, float maxSpeed) {
@@ -148,7 +173,7 @@ namespace rf {
                            timeHorizonObst, radius, maxSpeed);
   }
 
-  
+
   void RVOWrapper::addAgents() {
     for (size_t i = 0; i < bots_.size(); ++i) {
       sim_->addAgent(RVO::Vector2());
@@ -163,45 +188,61 @@ namespace rf {
     //          bots_[id_]->getName().c_str(), vel.x(), vel.y());
 
     // ROS_INFO("Sim vel: % 6.2f % 6.2f", vel.x(), vel.y());
-    
-    // Solve for control inputs for standard kinematic model with feedback
-    // linearization; see (eqn 2) in "Smooth and Collision-Free Navigation for
-    // Multiple Robots Under Differential-Drive Constraints"
-    double theta = quat_angle(bots_[id_]->getPose().orientation);
 
-    double ct = cos(theta);
-    double st = sin(theta);
-    double L = sim_->getAgentRadius(id_) / 2.0;
-    Eigen::Matrix2d m;
-    m(0, 0) = ct / 2.0 + axel_width_ * st / L;
-    m(0, 1) = ct / 2.0 - axel_width_ * st / L;
-    m(1, 0) = st / 2.0 - axel_width_ * ct / L;
-    m(1, 1) = st / 2.0 + axel_width_ * ct / L;
-
-    Eigen::Vector2d v(vel.x(), vel.y());
-    Eigen::Vector2d u = m.inverse() * v;
-
-    bool at_dest = false;
+    double theta;
+    if (!quat_angle(bots_[id_]->getPose().orientation, &theta)) {
+      ROS_WARN_THROTTLE(1.0, "Problem with quaternion in step()");
+      return false;
+    }
+    double desired_theta = atan2(vel.y(), vel.x());
+    bool at_dest = RVO::abs(sim_->getAgentPosition(id_) - goal_) < goal_tol_;
     double vx;
     double vw;
-    if (RVO::abs(sim_->getAgentPosition(id_) - goal_) > goal_tol_) {
-      vx = (u(0) + u(1)) / 2.0;
-      vw = (u(1) - u(0)) / L;
-    } else {
+
+    double norm_theta_diff = angles::normalize_angle(desired_theta - theta);
+    if (at_dest) {
+      // We're here, stop
       vx = 0.0;
       vw = 0.0;
-      at_dest = true;
+    } else if (abs(norm_theta_diff) > M_PI / 6) {
+      // We're not oriented well, rotate to correct that
+      vx = 0.0;
+      vw = copysign(0.5, norm_theta_diff);
+    } else {
+      // We're correctly oriented and not at the goal, let RVO do its thing
+      //
+      // Solve for control inputs for standard kinematic model with feedback
+      // linearization; see (eqn 2) in "Smooth and Collision-Free Navigation
+      // for Multiple Robots Under Differential-Drive Constraints"
+      double ct = cos(theta);
+      double st = sin(theta);
+      double L = sim_->getAgentRadius(id_) / 2.0;
+      Eigen::Matrix2d m;
+      m(0, 0) = ct / 2.0 + axel_width_ * st / L;
+      m(0, 1) = ct / 2.0 - axel_width_ * st / L;
+      m(1, 0) = st / 2.0 - axel_width_ * ct / L;
+      m(1, 1) = st / 2.0 + axel_width_ * ct / L;
+
+      Eigen::Vector2d v(vel.x(), vel.y());
+      Eigen::Vector2d u = m.inverse() * v;
+      // ROS_DEBUG("L: % 6.2f", L);
+      // ROS_DEBUG_STREAM("m: " << m);
+      // ROS_DEBUG_STREAM("m_inv: " << m.inverse());
+      // ROS_DEBUG_STREAM("vel:       " << setprecision(2) << v.transpose());
+      // ROS_DEBUG_STREAM("wheel vel: " << setprecision(2) << u.transpose());
+
+      vx = (u(0) + u(1)) / 2.0;
+      vw = (u(1) - u(0)) / L;
+      vx = min(max(vx, -max_speed_), max_speed_);
+      vw = min(max(vw, -max_speed_), max_speed_);
     }
+
     bots_[id_]->pubVel(vx, vw);
-    ROS_DEBUG("Theta: % 6.2f", theta);
-    ROS_DEBUG("L: % 6.2f", L);
-    ROS_DEBUG_STREAM("m: " << m);
-    ROS_DEBUG_STREAM("m_inv: " << m.inverse());
-    ROS_DEBUG_STREAM("vel:       " << setprecision(2) << v.transpose());
-    ROS_DEBUG_STREAM("wheel vel: " << setprecision(2) << u.transpose());
-    ROS_DEBUG("sim pose:  % 6.2f % 6.2f", sim_->getAgentPosition(id_).x(),
-             sim_->getAgentPosition(id_).y());
-    ROS_DEBUG("command:   % 6.2f % 6.2f\n", vx, vw);
+    // ROS_DEBUG("Theta: % 6.2f", theta);
+    // ROS_DEBUG("sim pose:  % 6.2f % 6.2f", sim_->getAgentPosition(id_).x(),
+    //          sim_->getAgentPosition(id_).y());
+    // ROS_DEBUG("command:   % 6.2f % 6.2f\n", vx, vw);
+
     return at_dest;
   }
 
@@ -211,7 +252,7 @@ namespace rf {
     waypoints_.clear();
 
     PointVector path = astar(rvo_to_eig(start), rvo_to_eig(goal_), map_, path_margin_);
-    if (path.size() != 0) {  
+    if (path.size() != 0) {
       waypoints_.push_back(eig_to_rvo(path[0]));
       for (size_t i = 0; i < path.size() - 1; ++i) {
         const RVO::Vector2& prev = waypoints_.back();
@@ -263,22 +304,22 @@ namespace rf {
         ROS_WARN("RVOWrapper::getLeadGoal() %s's next waypoint is not visible",
                  bots_[id_]->getName().c_str());
       }
-      
+
       *goal = waypoints_[min_ind] - pos;
       if (RVO::absSq(*goal) > 1.0f) {
         *goal = RVO::normalize(*goal);
       }
-      
-      ROS_DEBUG("Advancing towards goal");
-      ROS_DEBUG("occ dist: % 6.2f",
-                map_get_cell(map_, pos.x(), pos.y(), 0.0)->occ_dist);
-      ROS_DEBUG("min_ind: %i", min_ind);
-      ROS_DEBUG("position:   % 6.2f % 6.2f", pos.x(), pos.y());
-      ROS_DEBUG("waypoint:   % 6.2f % 6.2f",
-                waypoints_[min_ind].x(), waypoints_[min_ind].y());
-      ROS_DEBUG("%s's actual goalVec: % 6.2f % 6.2f",
-                bots_[id_]->getName().c_str(), goal->x(), goal->y());
-      ROS_DEBUG("Num obs: %zu", sim_->getAgentNumObstacleNeighbors(id_));
+
+      // ROS_DEBUG("Advancing towards goal");
+      // ROS_DEBUG("occ dist: % 6.2f",
+      //           map_get_cell(map_, pos.x(), pos.y(), 0.0)->occ_dist);
+      // ROS_DEBUG("min_ind: %i", min_ind);
+      // ROS_DEBUG("position:   % 6.2f % 6.2f", pos.x(), pos.y());
+      // ROS_DEBUG("waypoint:   % 6.2f % 6.2f",
+      //           waypoints_[min_ind].x(), waypoints_[min_ind].y());
+      // ROS_DEBUG("%s's actual goalVec: % 6.2f % 6.2f",
+      //           bots_[id_]->getName().c_str(), goal->x(), goal->y());
+      // ROS_DEBUG("Num obs: %zu", sim_->getAgentNumObstacleNeighbors(id_));
       return true;
     }
   }
@@ -286,18 +327,19 @@ namespace rf {
   bool RVOWrapper::syncState() {
     // Update RVO simulator with latest position & velocitys from ROS
     bool have_everything = true;
-    ros::Duration d(10.0);
-    
+    ros::Duration d(60.0);
+
     for (size_t i = 0; i < sim_->getNumAgents(); ++i) {
       BotClient *bot = bots_[i];
       if (bot->havePose(d)) {
         RVO::Vector2 position = pose_to_rvo(bot->getPose());
         sim_->setAgentPosition(i, position);
       } else {
-        ROS_WARN("No pose info for %s (id: %zu)", bot->getName().c_str(), i);
+        ROS_WARN_THROTTLE(2.0, "No pose info for %s (id: %zu)",
+                          bot->getName().c_str(), i);
         have_everything = false;
       }
-      
+
       if (bot->haveOdom(d)) {
         RVO::Vector2 vel = odom_to_rvo(bot->getOdom(), bot->getPose());
         sim_->setAgentVelocity(i, vel);
@@ -324,14 +366,14 @@ namespace rf {
           // Perturb a little to avoid deadlocks due to perfect symmetry.
           float angle = std::rand() * 2.0f * M_PI / RAND_MAX;
           float dist = std::rand() * 0.0001f / RAND_MAX;
-          sim_->setAgentPrefVelocity(i, goalVector + 
+          sim_->setAgentPrefVelocity(i, goalVector +
                                      dist * RVO::Vector2(std::cos(angle), std::sin(angle)));
         }
       } else {
         BotClient *bot = bots_[i];
         RVO::Vector2 goal = odom_to_rvo(bot->getOdom(), bot->getPose());
-        ROS_DEBUG("%s thinks %s's xy_vel:  % 6.2f % 6.2f", bots_[id_]->getName().c_str(),
-                  bot->getName().c_str(), goal.x(), goal.y());
+        // ROS_DEBUG("%s thinks %s's xy_vel:  % 6.2f % 6.2f", bots_[id_]->getName().c_str(),
+        //           bot->getName().c_str(), goal.x(), goal.y());
         sim_->setAgentPrefVelocity(i, goalVector);
       }
     }
@@ -343,7 +385,7 @@ namespace rf {
   MoveServer::MoveServer(const std::string &server_name) :
     pnh_("~"), as_(nh_, server_name, boost::bind(&MoveServer::executeCB, this, _1), false),
     action_name_(ros::names::resolve(server_name)) {
-    
+
     ROS_INFO("Setting up action server '%s'", action_name_.c_str());
     // Get the map
     map_ = requestCSpaceMap("map");
@@ -368,7 +410,7 @@ namespace rf {
     pnh_.param("map_frame_id", tf_frame_, std::string("/map"));
     nav_msgs::Path path;
     path.header.stamp = ros::Time::now();
-    path.header.frame_id = tf_frame_; 
+    path.header.frame_id = tf_frame_;
     path.poses.resize(0);
     path_pub_.publish(path);
     ROS_INFO("Done setting up %s",  action_name_.c_str());
@@ -381,13 +423,13 @@ namespace rf {
       delete bots_[i];
     }
   }
-  
+
   void MoveServer::executeCB(const rvo_move::MoveGoalConstPtr &goal) {
     std::string prefix = action_name_ + "::MoveServer";
     const char *pref = prefix.c_str();
     ROS_INFO("%s got request: (% 7.2f, % 7.2f)", pref,
              goal->target_pose.pose.position.x, goal->target_pose.pose.position.y);
-    
+
     std::vector<geometry_msgs::Pose> path = wrapper_->setGoal(goal->target_pose.pose);
     // Publish the path
     nav_msgs::Path nav_path;
@@ -406,7 +448,7 @@ namespace rf {
       as_.setAborted();
       return;
     }
-    for (ros::Duration dur(timestep_); ; dur.sleep()) {      
+    for (ros::Rate rate(1.0 / timestep_); ; rate.sleep()) {
       if (!ros::ok()) {
         ROS_INFO("%s Ros shutdown", action_name_.c_str());
         as_.setPreempted();
@@ -423,7 +465,7 @@ namespace rf {
       if (!wrapper_->syncState()) {
         ROS_WARN_THROTTLE(1.0, "%s Problem synchronizing state", pref);
       }
-     
+
       if (!wrapper_->setVelocities()) {
         ROS_WARN("%s Problem while setting agent velocities", pref);
         as_.setAborted();
@@ -442,7 +484,7 @@ namespace rf {
       bots_[wrapper_->getID()]->pubVel(0.0, 0.0);
     }
   }
-  
+
   void MoveServer::start() {
     as_.start();
   }
