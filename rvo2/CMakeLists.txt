@@ -54,7 +54,31 @@
 # <http://gamma.cs.unc.edu/RVO2/>
 #
 
-cmake_minimum_required(VERSION 2.6)
-project(RVO)
-add_subdirectory("src")
-add_subdirectory("examples")
+cmake_minimum_required(VERSION 2.8.3)
+project(rvo2)
+find_package(catkin)
+catkin_package(INCLUDE_DIRS include LIBRARIES RVO)
+
+include_directories(include/rvo)
+set(RVO_SOURCES
+	"src/Agent.cpp"
+	"src/Agent.h"
+	"src/Definitions.h"
+	"src/KdTree.cpp"
+	"src/KdTree.h"
+	"src/Obstacle.cpp"
+	"src/Obstacle.h"
+	"src/RVOSimulator.cpp")
+
+add_library(rvo2 ${RVO_SOURCES})
+
+install(TARGETS rvo2
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(DIRECTORY include
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  FILES_MATCHING PATTERN "*.h"
+)

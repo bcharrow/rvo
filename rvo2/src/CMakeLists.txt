@@ -54,19 +54,3 @@
 # <http://gamma.cs.unc.edu/RVO2/>
 #
 
-set(RVO_HEADERS
-	"RVO.h"
-	"RVOSimulator.h"
-	"Vector2.h")
-set(RVO_SOURCES
-	"Agent.cpp"
-	"Agent.h"
-	"Definitions.h"
-	"KdTree.cpp"
-	"KdTree.h"
-	"Obstacle.cpp"
-	"Obstacle.h"
-	"RVOSimulator.cpp")
-add_library(RVO ${RVO_HEADERS} ${RVO_SOURCES})
-install(FILES ${RVO_HEADERS} DESTINATION include)
-install(TARGETS RVO DESTINATION lib)

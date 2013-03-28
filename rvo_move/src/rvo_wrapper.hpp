@@ -8,7 +8,7 @@
 
 #include <rvo_move/MoveAction.h>
 
-#include <RVO/RVO.h>
+#include <rvo/RVO.h>
 
 #include <player_map/rosmap.hpp>
 

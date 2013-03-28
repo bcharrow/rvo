@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<package>
+  <name>rvo2</name>
+  <version>0.0.0</version>
+  <description>The rvo2 package</description>
+  <maintainer email="bcharrow@seas.upenn.edu">bcharrow</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+</package>
