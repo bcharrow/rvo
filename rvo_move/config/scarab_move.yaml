@@ -1,12 +1,12 @@
 neighborDist: 10.0
 maxNeighbors: 10
-timeHorizon: 6.0
-timeHorizonObst: 2.0
-radius: 0.30
+timeHorizon: 8.0
+timeHorizonObst: 3.0
+radius: 0.27
 maxSpeed: 0.20
-timestep: 0.05 # 1 / controller rate
-axel_width: 0.27
-los_margin: 0.25
+timestep: 0.1 # 1 / controller rate
+axel_width: 0.255
+los_margin: 0.2
 
 waypoint_spacing: 0.05
 path_margin: 0.3

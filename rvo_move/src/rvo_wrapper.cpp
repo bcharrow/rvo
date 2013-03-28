@@ -18,7 +18,7 @@ RVO::Vector2 pose_to_rvo(const geometry_msgs::Pose& p) {
 bool quat_angle(const geometry_msgs::Quaternion& msg, double *angle) {
   tf::Quaternion q = tf::Quaternion(msg.x, msg.y, msg.z, msg.w);
   if (fabs(q.length2() - 1) > 1e-4) {
-    // ROS_WARN_THROTTLE(1.0, "Quaternion not properly normalized");
+    ROS_DEBUG_THROTTLE(1.0, "Quaternion not properly normalized");
     return false;
   } else {
     *angle = tf::getYaw(q);
@@ -33,7 +33,7 @@ RVO::Vector2 odom_to_rvo(const nav_msgs::Odometry& odom,
 
   double theta;
   if (!quat_angle(p.orientation, &theta)) {
-    ROS_WARN_THROTTLE(1.0, "odom_to_rvo()");
+    ROS_DEBUG_THROTTLE(5.0, "odom_to_rvo()");
     return RVO::Vector2(0.0, 0.0);
   }
   // Rotate to get velocity in world frame
@@ -191,7 +191,7 @@ namespace rf {
 
     double theta;
     if (!quat_angle(bots_[id_]->getPose().orientation, &theta)) {
-      ROS_WARN_THROTTLE(1.0, "Problem with quaternion in step()");
+      ROS_WARN_THROTTLE(5.0, "Problem with quaternion in step()");
       return false;
     }
     double desired_theta = atan2(vel.y(), vel.x());
@@ -200,14 +200,16 @@ namespace rf {
     double vw;
 
     double norm_theta_diff = angles::normalize_angle(desired_theta - theta);
+    bool straight_forward = fabs(norm_theta_diff) < M_PI / 6.0;
+    bool straight_backward = fabs(norm_theta_diff) > M_PI - M_PI/16;
     if (at_dest) {
       // We're here, stop
       vx = 0.0;
       vw = 0.0;
-    } else if (abs(norm_theta_diff) > M_PI / 6) {
+    } else if (!straight_forward && !straight_backward) {
       // We're not oriented well, rotate to correct that
       vx = 0.0;
-      vw = copysign(0.5, norm_theta_diff);
+      vw = copysign(1.0, norm_theta_diff);
     } else {
       // We're correctly oriented and not at the goal, let RVO do its thing
       //
@@ -335,7 +337,7 @@ namespace rf {
         RVO::Vector2 position = pose_to_rvo(bot->getPose());
         sim_->setAgentPosition(i, position);
       } else {
-        ROS_WARN_THROTTLE(2.0, "No pose info for %s (id: %zu)",
+        ROS_WARN_THROTTLE(5.0, "No pose info for %s (id: %zu)",
                           bot->getName().c_str(), i);
         have_everything = false;
       }
@@ -344,7 +346,7 @@ namespace rf {
         RVO::Vector2 vel = odom_to_rvo(bot->getOdom(), bot->getPose());
         sim_->setAgentVelocity(i, vel);
       } else {
-        ROS_WARN_THROTTLE(1.0, "No odom info for %s (id: %zu)",
+        ROS_WARN_THROTTLE(5.0, "No odom info for %s (id: %zu)",
                           bot->getName().c_str(), i);
         have_everything = false;
       }
@@ -445,6 +447,7 @@ namespace rf {
 
     if (path.size() == 0) {
       ROS_WARN("No path found");
+      bots_[wrapper_->getID()]->pubVel(0.0, 0.0);
       as_.setAborted();
       return;
     }
@@ -463,7 +466,7 @@ namespace rf {
       }
 
       if (!wrapper_->syncState()) {
-        ROS_WARN_THROTTLE(1.0, "%s Problem synchronizing state", pref);
+        ROS_WARN_THROTTLE(5.0, "%s Problem synchronizing state", pref);
       }
 
       if (!wrapper_->setVelocities()) {
