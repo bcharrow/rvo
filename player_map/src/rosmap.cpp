@@ -20,7 +20,7 @@ namespace rf {
     // get map via RPC
     player_map::GetMap::Request  req;
     player_map::GetMap::Response resp;
-    ROS_INFO("Requesting c-space + map...");
+    ROS_INFO_ONCE("Requesting c-space + map...");
     while(!ros::service::call(srv_name, req, resp)) {
       ROS_WARN("Request for map '%s' failed; trying again...",
                ros::names::resolve(string(srv_name)).c_str());
@@ -29,11 +29,9 @@ namespace rf {
       if (!nh.ok())
         break;
     }
-    ROS_INFO("Received a %d X %d map @ %.3f m/pix  max_occ_dist= %.3f\n",
-             resp.map.info.width,
-             resp.map.info.height,
-             resp.map.info.resolution,
-             resp.max_occ_dist);
+    ROS_INFO_ONCE("Received a %d X %d map @ %.3f m/pix  max_occ_dist= %.3f\n",
+                  resp.map.info.width, resp.map.info.height,
+                  resp.map.info.resolution, resp.max_occ_dist);
     convertMap(resp.map, map);
 
     map->max_occ_dist = resp.max_occ_dist;
@@ -64,9 +62,8 @@ namespace rf {
       if (!nh.ok())
         break;
     }
-    ROS_INFO("Received a %d X %d map @ %.3f m/pix\n",
-             resp.map.info.width,
-             resp.map.info.height,
+    ROS_INFO_ONCE("Received a %d X %d map @ %.3f m/pix\n",
+             resp.map.info.width, resp.map.info.height,
              resp.map.info.resolution);
     
     convertMap(resp.map, map);

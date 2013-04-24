@@ -6,6 +6,8 @@
 
 #include <nav_msgs/Path.h>
 
+#include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
 
 using namespace rf;
 using namespace std;
@@ -79,12 +81,41 @@ namespace rf {
                            timeHorizonObst, radius, max_speed_, velocity);
     sim_->setTimeStep(timestep_);
 
+    vis_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("rvo_visarray", 10, true);
+
     // TODO: RVO should be able to use occupancy grid information.
-    // TODO: Should publish obstacles to RViz
+
+    visualization_msgs::MarkerArray ma;
+    visualization_msgs::Marker m;
+    m.action = visualization_msgs::Marker::ADD;
+    m.type = visualization_msgs::Marker::LINE_STRIP;
+    m.header.stamp = ros::Time();
+    m.header.frame_id = "/map";
+    m.id = 1;
+    m.ns = "rvo";
+    m.pose.orientation.w = 1.0;
+    m.scale.x = 0.1;
+    m.color.r = 1.0;
+    m.color.a = 1.0;
+    m.points.resize(0);
     for (size_t i = 0; i < obstacles.size(); ++i) {
-      sim_->addObstacle(obstacles[i]);
+      const vector<RVO::Vector2> &obs = obstacles[i];
+      m.points.clear();
+      m.points.resize(obs.size() + 1);
+      for (size_t j = 0; j < obs.size(); ++j) {
+        m.points[j].x = obs[j].x();
+        m.points[j].y = obs[j].y();
+      }
+      m.points.back().x = obs[0].x();
+      m.points.back().y = obs[0].y();
+
+      sim_->addObstacle(obs);
+      ma.markers.push_back(m);
+      m.id++;
     }
+    vis_pub_.publish(ma);
     sim_->processObstacles();
+
   }
 
   RVOWrapper::~RVOWrapper() {
@@ -176,7 +207,7 @@ namespace rf {
 
   void RVOWrapper::addAgents() {
     for (size_t i = 0; i < bots_.size(); ++i) {
-      sim_->addAgent(RVO::Vector2());
+      sim_->addAgent(RVO::Vector2(-1000, -1000));
     }
   }
 
@@ -209,7 +240,7 @@ namespace rf {
     } else if (!straight_forward && !straight_backward) {
       // We're not oriented well, rotate to correct that
       vx = 0.0;
-      vw = copysign(1.0, norm_theta_diff);
+      vw = copysign(0.6, norm_theta_diff);
     } else {
       // We're correctly oriented and not at the goal, let RVO do its thing
       //
@@ -253,14 +284,24 @@ namespace rf {
     goal_ = pose_to_rvo(p);
     waypoints_.clear();
 
-    PointVector path = astar(rvo_to_eig(start), rvo_to_eig(goal_), map_, path_margin_);
+    PointVector path;
+    double margin = path_margin_;
+    while (true) {
+      path = astar(rvo_to_eig(start), rvo_to_eig(goal_), map_, margin);
+      if (path.size() != 0 || margin < 0.05) {
+        break;
+      } else {
+        ROS_DEBUG("Shrinking path");
+        margin *= 0.9;
+      }
+    }
+
     if (path.size() != 0) {
       waypoints_.push_back(eig_to_rvo(path[0]));
       for (size_t i = 0; i < path.size() - 1; ++i) {
         const RVO::Vector2& prev = waypoints_.back();
         const RVO::Vector2& curr = eig_to_rvo(path[i]);
-        if (!sim_->queryVisibility(prev, curr, los_margin_) ||
-            RVO::abs(prev - curr) > way_spacing_) {
+        if (RVO::abs(prev - curr) > way_spacing_) {
           waypoints_.push_back(eig_to_rvo(path[i-1]));
         }
       }
@@ -282,9 +323,10 @@ namespace rf {
     // Direct robot towards successor of point that it is closest to
     float min_dist = std::numeric_limits<float>::infinity();
     int min_ind = -1;
+    // Get closest visible waypoint
     RVO::Vector2 pos =  sim_->getAgentPosition(id_);
     for (size_t wayind = 0; wayind < waypoints_.size(); ++wayind) {
-      if (!sim_->queryVisibility(pos, waypoints_[wayind], sim_->getAgentRadius(id_))) {
+      if (!sim_->queryVisibility(pos, waypoints_[wayind], los_margin_)) {
         continue;
       }
       float dist = RVO::absSq(pos - waypoints_[wayind]);
@@ -295,11 +337,15 @@ namespace rf {
     }
 
     if (min_ind == -1) {
+      ROS_WARN("No waypoints are visible!");
       *goal = RVO::Vector2();
       return false;
     } else {
+      int orig_min = min_ind;
+      // Find waypoint furthest along the path that robot can see
       while (static_cast<unsigned>(min_ind + 1) < waypoints_.size() &&
-             sim_->queryVisibility(pos, waypoints_[min_ind+1], los_margin_)) {
+             sim_->queryVisibility(pos, waypoints_[min_ind+1], los_margin_) &&
+             sqrt(RVO::absSq(waypoints_[orig_min] - waypoints_[min_ind+1])) < 1.0) {
         ++min_ind;
       }
       if (!sim_->queryVisibility(pos, waypoints_[min_ind])) {
@@ -307,10 +353,29 @@ namespace rf {
                  bots_[id_]->getName().c_str());
       }
 
-      *goal = waypoints_[min_ind] - pos;
-      if (RVO::absSq(*goal) > 1.0f) {
-        *goal = RVO::normalize(*goal);
-      }
+      *goal = RVO::normalize(waypoints_[min_ind] - pos);
+      // if (RVO::absSq(*goal) > 1.0f) {
+      //   *goal = RVO::normalize(*goal);
+      // }
+
+      visualization_msgs::MarkerArray ma;
+      ma.markers.resize(1);
+      visualization_msgs::Marker &m = ma.markers.at(0);
+      m.header.stamp = ros::Time();
+      m.header.frame_id = "/map";
+      m.action = visualization_msgs::Marker::ADD;
+      m.type = visualization_msgs::Marker::SPHERE;
+      m.id = 100;
+      m.ns = "rvo";
+      m.pose.orientation.w = 1.0;
+      m.scale.x = 0.1;
+      m.scale.y = 0.1;
+      m.scale.z = 0.1;
+      m.color.a = 1.0;
+      m.color.r = 1.0;
+      m.pose.position.x = waypoints_[min_ind].x();
+      m.pose.position.y = waypoints_[min_ind].y();
+      vis_pub_.publish(ma);
 
       // ROS_DEBUG("Advancing towards goal");
       // ROS_DEBUG("occ dist: % 6.2f",
@@ -359,8 +424,8 @@ namespace rf {
     // Set preferred velocities
     bool ok = true;
     for (size_t i = 0; i < sim_->getNumAgents(); ++i) {
-      RVO::Vector2 goalVector;
       if (i == id_) {
+        RVO::Vector2 goalVector;
         ok = getLeadGoal(&goalVector);
         if (!ok) {
           ROS_WARN("%s problem getting goal", bots_[id_]->getName().c_str());
@@ -376,7 +441,7 @@ namespace rf {
         RVO::Vector2 goal = odom_to_rvo(bot->getOdom(), bot->getPose());
         // ROS_DEBUG("%s thinks %s's xy_vel:  % 6.2f % 6.2f", bots_[id_]->getName().c_str(),
         //           bot->getName().c_str(), goal.x(), goal.y());
-        sim_->setAgentPrefVelocity(i, goalVector);
+        sim_->setAgentPrefVelocity(i, goal);
       }
     }
     return ok;

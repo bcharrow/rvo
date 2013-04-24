@@ -10,6 +10,7 @@
   <url>http://ros.org/wiki/rvo_move</url>
   <depend package="roscpp"/>
   <depend package="geometry_msgs"/>
+  <depend package="visualization_msgs"/>
   <depend package="nav_msgs"/>
   <depend package="rvo2"/>
   <depend package="actionlib_msgs" />
