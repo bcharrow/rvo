@@ -33,7 +33,7 @@ namespace rf {
     } else {
       ROS_INFO("Not initializing pose");
     }
-    vel_pub_ = nh_->advertise<geometry_msgs::Twist>("motor/cmd_vel", 5);
+    vel_pub_ = nh_->advertise<geometry_msgs::Twist>("cmd_vel", 5);
   }
 
   BotClient::~BotClient() {
