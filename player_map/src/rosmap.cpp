@@ -27,7 +27,7 @@ namespace rf {
       ros::Duration d(4.0);
       d.sleep();
       if (!nh.ok())
-        break;
+        return NULL;
     }
     ROS_INFO_ONCE("Received a %d X %d map @ %.3f m/pix  max_occ_dist= %.3f\n",
                   resp.map.info.width, resp.map.info.height,
@@ -60,7 +60,7 @@ namespace rf {
       ros::Duration d(4.0);
       d.sleep();
       if (!nh.ok())
-        break;
+        return NULL;
     }
     ROS_INFO_ONCE("Received a %d X %d map @ %.3f m/pix\n",
              resp.map.info.width, resp.map.info.height,

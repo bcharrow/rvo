@@ -45,7 +45,8 @@ namespace rf {
     bool getOtherGoal(int bot_id, RVO::Vector2 *goal);
 
     ros::NodeHandle nh_;
-    ros::Publisher vis_pub_;
+    ros::Publisher vis_pub_, vis_pub_throt_;
+    std::string namespace_;
 
     RVO::RVOSimulator *sim_;
     std::vector<rf::BotClient *> bots_;
@@ -74,6 +75,7 @@ namespace rf {
   private:
     ros::NodeHandle nh_, pnh_;
     ros::Publisher path_pub_, vis_pub_;
+    std::string namespace_;
     actionlib::SimpleActionServer<rvo_move::MoveAction> as_;
     std::string action_name_;
     std::string tf_frame_;

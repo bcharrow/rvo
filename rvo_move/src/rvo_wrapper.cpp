@@ -75,13 +75,14 @@ namespace rf {
     float neighborDist = 3.0, timeHorizon = 2.0, timeHorizonObst = 2.0;
     float radius = 0.25;
     size_t maxNeighbors = 10;
-
+    namespace_ = nh_.getNamespace();
     sim_ = new RVO::RVOSimulator();
     sim_->setAgentDefaults(neighborDist, maxNeighbors, timeHorizon,
                            timeHorizonObst, radius, max_speed_, velocity);
     sim_->setTimeStep(timestep_);
 
-    vis_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("rvo_visarray", 10, true);
+    vis_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("marker_array", 10, true);
+    vis_pub_throt_ = nh_.advertise<visualization_msgs::MarkerArray>("marker_array_throttle", 10, true);
 
     // TODO: RVO should be able to use occupancy grid information.
 
@@ -92,9 +93,9 @@ namespace rf {
     m.header.stamp = ros::Time();
     m.header.frame_id = "/map";
     m.id = 1;
-    m.ns = "rvo";
+    m.ns = namespace_ + "/rvo";
     m.pose.orientation.w = 1.0;
-    m.scale.x = 0.1;
+    m.scale.x = 0.2;
     m.color.r = 1.0;
     m.color.a = 1.0;
     m.points.resize(0);
@@ -114,6 +115,7 @@ namespace rf {
       m.id++;
     }
     vis_pub_.publish(ma);
+    vis_pub_throt_.publish(ma);
     sim_->processObstacles();
 
   }
@@ -231,7 +233,7 @@ namespace rf {
     double vw;
 
     double norm_theta_diff = angles::normalize_angle(desired_theta - theta);
-    bool straight_forward = fabs(norm_theta_diff) < M_PI / 6.0;
+    bool straight_forward = fabs(norm_theta_diff) < M_PI / 8.0;
     bool straight_backward = fabs(norm_theta_diff) > M_PI - M_PI/16;
     if (at_dest) {
       // We're here, stop
@@ -366,7 +368,7 @@ namespace rf {
       m.action = visualization_msgs::Marker::ADD;
       m.type = visualization_msgs::Marker::SPHERE;
       m.id = 100;
-      m.ns = "rvo";
+      m.ns = namespace_ + "/rvo";
       m.pose.orientation.w = 1.0;
       m.scale.x = 0.1;
       m.scale.y = 0.1;
@@ -463,6 +465,7 @@ namespace rf {
                max_occ_dist, map_->max_occ_dist);
     }
     // Get bots
+    namespace_ = nh_.getNamespace();
     bots_ = BotClient::MakeBots(pnh_);
     ROS_INFO("Listening to %zu bots", bots_.size());
     for (size_t i = 0; i < bots_.size(); ++i) {
@@ -492,10 +495,11 @@ namespace rf {
   }
 
   void MoveServer::executeCB(const rvo_move::MoveGoalConstPtr &goal) {
-    std::string prefix = action_name_ + "::MoveServer";
+    std::string prefix = action_name_;
     const char *pref = prefix.c_str();
-    ROS_INFO("%s got request: (% 7.2f, % 7.2f)", pref,
-             goal->target_pose.pose.position.x, goal->target_pose.pose.position.y);
+    ROS_INFO("%s got request: (%.2f, %.2f)", pref,
+             goal->target_pose.pose.position.x,
+             goal->target_pose.pose.position.y);
 
     std::vector<geometry_msgs::Pose> path = wrapper_->setGoal(goal->target_pose.pose);
     // Publish the path
