@@ -1,13 +1,13 @@
 all: rvo2
 
 TARBALL = build/rvo2-2.0.1.src.zip
-TARBALL_URL = http://gamma.cs.unc.edu/RVO2/downloads/2.0/rvo2-2.0.1.src.zip
+TARBALL_URL = http://gamma.cs.unc.edu/RVO2/downloads/2.0/rvo2-2.0.1.zip
 SOURCE_DIR = build/RVO2
 UNPACK_CMD=unzip
 include $(shell rospack find mk)/download_unpack_build.mk
 
 rvo2: $(SOURCE_DIR)/unpacked
-	cd $(SOURCE_DIR) && cmake -D CMAKE_INSTALL_PREFIX=$(SOURCE_DIR)/../.. src  && make install
+	cd $(SOURCE_DIR) && cmake -D CMAKE_INSTALL_PREFIX=.. . && make install
 	mkdir -p include  && mv build/include include/RVO
 	mv build/lib lib
 	touch rvo2
