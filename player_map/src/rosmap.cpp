@@ -1,6 +1,5 @@
 #include "player_map/rosmap.hpp"
 
-#include <cstdio>
 #include <cmath>
 
 #include <ros/ros.h>
@@ -10,6 +9,28 @@
 
 using namespace std;
 namespace rf {
+
+void convertMap(const nav_msgs::OccupancyGrid &map, map_t *pmap) {
+  pmap->size_x = map.info.width;
+  pmap->size_y = map.info.height;
+  pmap->scale = map.info.resolution;
+  pmap->origin_x = map.info.origin.position.x + (pmap->size_x / 2) * pmap->scale;
+  pmap->origin_y = map.info.origin.position.y + (pmap->size_y / 2) * pmap->scale;
+  pmap->max_occ_dist = 0.0;
+  // Convert to player format
+  pmap->cells = (map_cell_t*)malloc(sizeof(map_cell_t)*pmap->size_x*pmap->size_y);
+  ROS_ASSERT(pmap->cells);
+  for(int i=0;i<pmap->size_x * pmap->size_y;i++) {
+    if(map.data[i] == 0)
+      pmap->cells[i].occ_state = -1;
+    else if(map.data[i] == 100)
+      pmap->cells[i].occ_state = +1;
+    else
+      pmap->cells[i].occ_state = 0;
+
+    pmap->cells[i].occ_dist = 0;
+  }
+}
 
 map_t * requestCSpaceMap(const char *srv_name) {
   ros::NodeHandle nh;
@@ -70,35 +91,49 @@ map_t * requestMap(const char *srv_name) {
   return map;
 }
 
-void convertMap(const nav_msgs::OccupancyGrid &map, map_t *pmap) {
-  pmap->size_x = map.info.width;
-  pmap->size_y = map.info.height;
-  pmap->scale = map.info.resolution;
-  pmap->origin_x = map.info.origin.position.x + (pmap->size_x / 2) * pmap->scale;
-  pmap->origin_y = map.info.origin.position.y + (pmap->size_y / 2) * pmap->scale;
-  // Convert to player format
-  pmap->cells = (map_cell_t*)malloc(sizeof(map_cell_t)*pmap->size_x*pmap->size_y);
-  ROS_ASSERT(pmap->cells);
-  for(int i=0;i<pmap->size_x * pmap->size_y;i++) {
-    if(map.data[i] == 0)
-      pmap->cells[i].occ_state = -1;
-    else if(map.data[i] == 100)
-      pmap->cells[i].occ_state = +1;
-    else
-      pmap->cells[i].occ_state = 0;
 
-    pmap->cells[i].occ_dist = 0;
+OccupancyMap::OccupancyMap(map_t *map) : map_(map), ncells_(0) {
+
+}
+
+OccupancyMap::~OccupancyMap() {
+  if (map_ != NULL) {
+    map_free(map_);
   }
 }
 
-
-LOSChecker::LOSChecker(map_t *map) : map_(map) {
-
+OccupancyMap* OccupancyMap::FromMapServer(const char *srv_name) {
+  map_t *map = requestMap(srv_name);
+  return new OccupancyMap(map);
 }
 
-bool LOSChecker::LineOfSight(double x1, double y1, double x2, double y2, double max_dist /* = 0.0 */) {
+void OccupancyMap::setMap(const nav_msgs::OccupancyGrid &grid) {
+  if (map_ != NULL) {
+    map_free(map_);
+  }
+
+  map_t* map = map_alloc();
+  ROS_ASSERT(map);
+  convertMap(grid, map_);
+}
+
+void OccupancyMap::updateCSpace(double max_occ_dist) {
+  // check if cspace needs to be updated
+  if (map_ == NULL || map_->max_occ_dist > max_occ_dist) {
+    return;
+  }
+  map_update_cspace(map_, max_occ_dist);
+}
+
+bool OccupancyMap::lineOfSight(double x1, double y1, double x2, double y2,
+                               double max_occ_dist) const {
   if (map_ == NULL) {
     return true;
+  }
+  if (map_->max_occ_dist < max_occ_dist) {
+    ROS_WARN("OccupancyMap::lineOfSight() CSpace has been calculated up to %f, "
+             "but max_occ_dist=%.2f",
+             map_->max_occ_dist, max_occ_dist);
   }
   // March along the line between (x1, y1) and (x2, y2) until the point passes
   // beyond (x2, y2).
@@ -118,9 +153,9 @@ bool LOSChecker::LineOfSight(double x1, double y1, double x2, double y2, double 
     // fprintf(stderr, "%f %f\n", line_x, line_y);
     map_cell_t *cell = map_get_cell(map_, line_x, line_y, 0);
     if (cell == NULL) {
-      // ROS_WARN_THROTTLE(5, "LOSChecker::LineOfSight() Beyond map edge");
+      // ROS_WARN_THROTTLE(5, "lineOfSight() Beyond map edge");
       return false;
-    } else if (cell->occ_state != -1 || cell->occ_dist < max_dist) {
+    } else if (cell->occ_state != -1 || cell->occ_dist < max_occ_dist) {
       return false;
     }
     line_x += step_size * ct;
@@ -129,162 +164,177 @@ bool LOSChecker::LineOfSight(double x1, double y1, double x2, double y2, double 
   return true;
 }
 
+void OccupancyMap::initializeSearch(double startx, double starty) {
+  starti_ = MAP_GXWX(map_, startx);
+  startj_ = MAP_GYWY(map_, starty);
 
-struct Node {
-  Node(const pair<int, int> &c, float d, float h) :
-    coord(c), true_dist(d), heuristic(h) { }
-  pair<int, int> coord;
-  float true_dist;
-  float heuristic;
-};
-
-struct NodeCompare {
-  bool operator()(const Node &lnode, const Node &rnode) {
-    return make_pair(lnode.heuristic, lnode.coord) <
-      make_pair(rnode.heuristic, rnode.coord);
-  }
-};
-
-PointVector astar(const Eigen::Vector2f &start, const Eigen::Vector2f &stop,
-                  map_t *map, double max_occ_dist /* = 0.0 */) {
-  int starti = MAP_GXWX(map, start(0)), startj = MAP_GYWY(map, start(1));
-  if (!MAP_VALID(map, starti ,startj)) {
-    ROS_ERROR("Invalid starting position");
-    return PointVector();
-  }
-  int stopi = MAP_GXWX(map, stop(0)), stopj = MAP_GYWY(map, stop(1));
-  if (!MAP_VALID(map, stopi ,stopj)) {
-    ROS_ERROR("Invalid stopping position");
-    return PointVector();
+  if (!MAP_VALID(map_, starti_, startj_)) {
+    ROS_ERROR("OccupancyMap::initializeSearch() Invalid starting position");
+    ROS_BREAK();
   }
 
-  const int ncells = map->size_x * map->size_y;
-  // True cost to goal from cell
-  float *costs = new float[ncells];
-  // (i,j) coordinates of node with lowest cost to current node
-  int *prev_i = new int[ncells];
-  int *prev_j = new int[ncells];
+  int ncells = map_->size_x * map_->size_y;
+  if (ncells_ != ncells) {
+    ncells_ = ncells;
+    costs_.reset(new float[ncells]);
+    prev_i_.reset(new int[ncells]);
+    prev_j_.reset(new int[ncells]);
+  }
 
-  // Map is large and initializing costs takes a while.  To speedup,
-  // partially initialize costs in a rectangle surrounding start and stop
-  // positions + margin.  If you run up against boundary, initialize the rest.
-  int margin = 120;
-  pair<int, int> init_ul = make_pair(max(0, min(starti, stopi) - margin),
-                                     max(0, min(startj, stopj) - margin));
-  pair<int, int> init_lr =
-    make_pair(min(map->size_x, max(starti, stopi) + margin),
-              min(map->size_y, max(startj, stopj) + margin));
-  for (int j = init_ul.second; j < init_lr.second; ++j) {
-    for (int i = init_ul.first; i < init_lr.first; ++i) {
-      int ind = MAP_INDEX(map, i, j);
-      costs[ind] = std::numeric_limits<float>::infinity();
+  // TODO: Return to more efficient lazy-initialization
+  // // Map is large and initializing costs_ takes a while.  To speedup,
+  // // partially initialize costs_ in a rectangle surrounding start and stop
+  // // positions + margin.  If you run up against boundary, initialize the rest.
+  // int margin = 120;
+  // init_ul_ = make_pair(max(0, min(starti_, stopi) - margin),
+  //                      max(0, min(startj_, stopj) - margin));
+  // init_lr_ = make_pair(min(map_->size_x, max(starti_, stopi) + margin),
+  //                      min(map_->size_y, max(startj_, stopj) + margin));
+  // for (int j = init_ul.second; j < init_lr.second; ++j) {
+  //   for (int i = init_ul.first; i < init_lr.first; ++i) {
+  //     int ind = MAP_INDEX(map_, i, j);
+  //     costs_[ind] = std::numeric_limits<float>::infinity();
+  //   }
+  // }
+  // full_init_ = false;
+
+  for (int i = 0; i < ncells_; ++i) {
+    costs_[i] = std::numeric_limits<float>::infinity();
+  }
+
+  int start_ind = MAP_INDEX(map_, starti_, startj_);
+  costs_[start_ind] = 0.0;
+  prev_i_[starti_] = starti_;
+  prev_j_[startj_] = startj_;
+
+  Q_.reset(new set<Node, NodeCompare>());
+  Q_->insert(Node(make_pair(starti_, startj_), 0.0, 0.0));
+
+  stopi_ = -1;
+  stopj_ = -1;
+}
+
+void OccupancyMap::addNeighbors(const Node &node, double max_occ_dist) {
+  // TODO: Return to more efficient lazy-initialization
+  // // Check if we're neighboring nodes whose costs_ are uninitialized.
+  // // if (!full_init &&
+  // //     ((ci + 1 >= init_lr.first) || (ci - 1 <= init_ul.first) ||
+  // //      (cj + 1 >= init_lr.second) || (cj - 1 <= init_ul.second))) {
+  // //   full_init = true;
+  // //   for (int j = 0; j < map_->size_y; ++j) {
+  // //     for (int i = 0; i < map_->size_x; ++i) {
+  // //       // Only initialize costs_ that are outside original rectangle
+  // //       if (!(init_ul.first <= i && i < init_lr.first &&
+  // //             init_ul.second <= j && j < init_lr.second)) {
+  // //         int ind = MAP_INDEX(map_, i, j);
+  // //         costs_[ind] = std::numeric_limits<float>::infinity();
+  // //       }
+  // //     }
+  // //   }
+  // // }
+
+  int ci = node.coord.first;
+  int cj = node.coord.second;
+
+  // Iterate over neighbors
+  for (int newj = cj - 1; newj <= cj + 1; ++newj) {
+    for (int newi = ci - 1; newi <= ci + 1; ++newi) {
+      // Skip self edges
+      if ((newi == ci && newj == cj) || !MAP_VALID(map_, newi, newj)) {
+        continue;
+      }
+      // fprintf(stderr, "  Examining %i %i ", newi, newj);
+      int index = MAP_INDEX(map_, newi, newj);
+      map_cell_t *cell = map_->cells + index;
+      // If cell is occupied or too close to occupied cell, continue
+
+      if (cell->occ_state != -1 || cell->occ_dist < max_occ_dist) {
+        // fprintf(stderr, "occupado\n");
+        continue;
+      }
+      // fprintf(stderr, "free\n");
+      double edge_cost = ci == newi || cj == newj ? 1 : sqrt(2);
+      double heur_cost = 0.0;
+      if (stopi_ != -1 && stopj_ != -1) {
+        heur_cost = hypot(newi - stopi_, newj - stopj_);
+      }
+      double ttl_cost = edge_cost + node.true_dist + heur_cost;
+      if (ttl_cost < costs_[index]) {
+        // fprintf(stderr, "    Better path: new cost= % 6.2f\n", ttl_cost);
+        // If node has finite cost, it's in queue and needs to be removed
+        if (!isinf(costs_[index])) {
+          Q_->erase(Node(make_pair(newi, newj), costs_[index], 0.0));
+        }
+        costs_[index] = ttl_cost;
+        prev_i_[index] = ci;
+        prev_j_[index] = cj;
+        Q_->insert(Node(make_pair(newi, newj),
+                        edge_cost + node.true_dist,
+                        ttl_cost));
+      }
     }
   }
+}
 
-  // fprintf(stderr, "Start: %i %i\n", starti, startj);
-  // fprintf(stderr, "Stop:  %i %i\n", stopi, stopj);
+void OccupancyMap::buildPath(int i, int j, PointVector *path) {
+  while (!(i == starti_ && j == startj_)) {
+    int index = MAP_INDEX(map_, i, j);
+    float x = MAP_WXGX(map_, i);
+    float y = MAP_WYGY(map_, j);
+    path->push_back(Eigen::Vector2f(x, y));
 
-  int start_ind = MAP_INDEX(map, starti, startj);
-  costs[start_ind] = 0.0;
-  prev_i[starti] = starti;
-  prev_j[startj] = startj;
+    i = prev_i_[index];
+    j = prev_j_[index];
+  }
+  float x = MAP_WXGX(map_, i);
+  float y = MAP_WYGY(map_, j);
+  path->push_back(Eigen::Vector2f(x, y));
+}
 
-  // Priority queue mapping cost to index
-  set<Node, NodeCompare> Q;
-  Q.insert(Node(make_pair(starti, startj), 0.0, 0.0));
-  bool found = false;
-  bool full_init = false;
-  while (!Q.empty()) {
+bool OccupancyMap::nextNode(Node *curr_node, double max_occ_dist) {
+  if (!Q_->empty()) {
     // Copy node and then erase it
-    Node curr_node = *Q.begin();
-    Q.erase(Q.begin());
-    // float cost = curr_node.true_dist;
-    int ci = curr_node.coord.first;
-    int cj = curr_node.coord.second;
-
-    costs[MAP_INDEX(map, ci, cj)] = curr_node.true_dist;
+    *curr_node = *Q_->begin();
+    int ci = curr_node->coord.first, cj = curr_node->coord.second;
     // fprintf(stderr, "At %i %i (cost = %6.2f)  % 7.2f % 7.2f \n",
-    //     ci, cj, curr_node.true_dist, MAP_WXGX(map, ci), MAP_WYGY(map, cj));
-    if (ci == stopi && cj == stopj) {
+    //     ci, cj, curr_node.true_dist, MAP_WXGX(map_, ci), MAP_WYGY(map_, cj));
+    costs_[MAP_INDEX(map_, ci, cj)] = curr_node->true_dist;
+    Q_->erase(Q_->begin());
+    addNeighbors(*curr_node, max_occ_dist);
+    return true;
+  } else {
+    return false;
+  }
+}
+
+PointVector OccupancyMap::astar(double startx, double starty,
+                                double stopx, double stopy,
+                                double max_occ_dist /* = 0.0 */) {
+  int stopi = MAP_GXWX(map_, stopx), stopj = MAP_GYWY(map_, stopy);
+  if (!MAP_VALID(map_, stopi ,stopj)) {
+    ROS_ERROR("OccupancyMap::astar() Invalid stopping position");
+    ROS_BREAK();
+  }
+
+  initializeSearch(startx, starty);
+  // Set stop to use heuristic
+  stopi_ = stopi;
+  stopj_ = stopj;
+
+  bool found = false;
+  Node curr_node;
+  while (nextNode(&curr_node, max_occ_dist)) {
+    if (curr_node.coord.first == stopi && curr_node.coord.second == stopj) {
       found = true;
       break;
-    }
-
-    // Check if we're neighboring nodes whose costs are uninitialized.
-    if (!full_init &&
-        ((ci + 1 >= init_lr.first) || (ci - 1 <= init_ul.first) ||
-         (cj + 1 >= init_lr.second) || (cj - 1 <= init_ul.second))) {
-      full_init = true;
-      for (int j = 0; j < map->size_y; ++j) {
-        for (int i = 0; i < map->size_x; ++i) {
-          // Only initialize costs that are outside original rectangle
-          if (!(init_ul.first <= i && i < init_lr.first &&
-                init_ul.second <= j && j < init_lr.second)) {
-            int ind = MAP_INDEX(map, i, j);
-            costs[ind] = std::numeric_limits<float>::infinity();
-          }
-        }
-      }
-    }
-
-    // Iterate over neighbors
-    for (int newj = cj - 1; newj <= cj + 1; ++newj) {
-      for (int newi = ci - 1; newi <= ci + 1; ++newi) {
-        // Skip self edges
-        if ((newi == ci && newj == cj) || !MAP_VALID(map, newi, newj)) {
-          continue;
-        }
-        // fprintf(stderr, "  Examining %i %i ", newi, newj);
-        int index = MAP_INDEX(map, newi, newj);
-        map_cell_t *cell = map->cells + index;
-        // If cell is occupied or too close to occupied cell, continue
-
-        if (cell->occ_state != -1 || cell->occ_dist < max_occ_dist) {
-          // fprintf(stderr, "occupado\n");
-          continue;
-        }
-        // fprintf(stderr, "free\n");
-        double edge_cost = ci == newi || cj == newj ? 1 : sqrt(2);
-        double heur_cost = hypot(newi - stopi, newj - stopj);
-        double ttl_cost = edge_cost + curr_node.true_dist + heur_cost;
-        if (ttl_cost < costs[index]) {
-          // fprintf(stderr, "    Better path: new cost= % 6.2f\n", ttl_cost);
-          // If node has finite cost, it's in queue and needs to be removed
-          if (!isinf(costs[index])) {
-            Q.erase(Node(make_pair(newi, newj), costs[index], 0.0));
-          }
-          costs[index] = ttl_cost;
-          prev_i[index] = ci;
-          prev_j[index] = cj;
-          Q.insert(Node(make_pair(newi, newj),
-                        edge_cost + curr_node.true_dist, ttl_cost));
-        }
-      }
     }
   }
 
   // Recreate path
   PointVector path;
   if (found) {
-    int i = stopi, j = stopj;
-    while (!(i == starti && j == startj)) {
-      int index = MAP_INDEX(map, i, j);
-      float x = MAP_WXGX(map, i);
-      float y = MAP_WYGY(map, j);
-      path.push_back(Eigen::Vector2f(x, y));
-
-      i = prev_i[index];
-      j = prev_j[index];
-    }
-    float x = MAP_WXGX(map, i);
-    float y = MAP_WYGY(map, j);
-    path.push_back(Eigen::Vector2f(x, y));
+    buildPath(stopi, stopj, &path);
   }
-
-  delete[] costs;
-  delete[] prev_i;
-  delete[] prev_j;
-
   return PointVector(path.rbegin(), path.rend());
 }
 

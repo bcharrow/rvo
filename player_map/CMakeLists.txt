@@ -26,21 +26,18 @@ add_definitions(${EIGEN_DEFINITIONS})
 rosbuild_gensrv()
 
 #common commands for building c++ executables and libraries
-rosbuild_add_library(playermap src/map.c src/map_draw.c src/map_range.c
-                               src/map_store.c src/rosmap.cpp)
+rosbuild_add_library(playermap src/map.c src/rosmap.cpp)
 #target_link_libraries(${PROJECT_NAME} another_library)
 #rosbuild_add_boost_directories()
 #rosbuild_link_boost(${PROJECT_NAME} thread)
 #rosbuild_add_executable(example examples/example.cpp)
 #target_link_libraries(example ${PROJECT_NAME})
 
-target_link_libraries(playermap yaml-cpp)
-
 rosbuild_add_gtest(test_rosmap src/rosmap_test.cpp)
 target_link_libraries(test_rosmap playermap)
 
-rosbuild_add_executable(player_map_server src/player_map_server.cpp)
-target_link_libraries(player_map_server playermap image_loader)
+# rosbuild_add_executable(player_map_server src/player_map_server.cpp)
+# target_link_libraries(player_map_server playermap image_loader)
 
-rosbuild_add_executable(player_map_test src/player_map_test.cpp)
-target_link_libraries(player_map_test playermap)
+# rosbuild_add_executable(player_map_test src/player_map_test.cpp)
+# target_link_libraries(player_map_test playermap)
