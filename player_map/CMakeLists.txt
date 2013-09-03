@@ -33,6 +33,9 @@ rosbuild_add_library(playermap src/map.c src/rosmap.cpp)
 #rosbuild_add_executable(example examples/example.cpp)
 #target_link_libraries(example ${PROJECT_NAME})
 
+rosbuild_add_executable(draw_paths src/draw_paths.cpp)
+target_link_libraries(draw_paths playermap)
+
 rosbuild_add_gtest(test_rosmap src/rosmap_test.cpp)
 target_link_libraries(test_rosmap playermap)
 

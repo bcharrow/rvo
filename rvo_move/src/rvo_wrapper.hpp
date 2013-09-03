@@ -14,14 +14,17 @@
 
 #include <rvo_move/bot_client.hpp>
 
-namespace rf {
+#include <boost/scoped_ptr.hpp>
+
+namespace rvo {
   class RVOWrapper {
   public:
-    RVOWrapper(std::vector<BotClient*> bots, size_t id, map_t *map,
+    RVOWrapper(std::vector<BotClient*> bots, size_t id, OccupancyMap *map,
                const std::vector<std::vector<RVO::Vector2> > &obstacles);
     ~RVOWrapper();
 
-    static RVOWrapper* ROSInit(const ros::NodeHandle& nh, map_t *map, std::vector<BotClient*> bots);
+    static RVOWrapper* ROSInit(const ros::NodeHandle& nh, OccupancyMap *map,
+                               std::vector<BotClient*> bots);
 
     bool step();
     std::vector<geometry_msgs::Pose> setGoal(const geometry_msgs::Pose& p);
@@ -49,11 +52,10 @@ namespace rf {
     std::string namespace_;
 
     RVO::RVOSimulator *sim_;
-    std::vector<rf::BotClient *> bots_;
+    std::vector<BotClient *> bots_;
     RVO::Vector2 goal_;
     std::vector<RVO::Vector2> waypoints_;
-    map_t *map_;
-    LOSChecker *checker_;
+    boost::scoped_ptr<OccupancyMap> map_;
     size_t id_;
 
     float max_dist_;
@@ -80,8 +82,7 @@ namespace rf {
     std::string action_name_;
     std::string tf_frame_;
     std::vector<BotClient *> bots_;
-    map_t *map_;
-    rf::RVOWrapper *wrapper_;
+    RVOWrapper *wrapper_;
     double timestep_;
   };
 }

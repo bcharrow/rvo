@@ -9,7 +9,6 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 
-using namespace rf;
 using namespace std;
 //================================ Utilities ================================//
 
@@ -60,8 +59,8 @@ Eigen::Vector2f rvo_to_eig(const RVO::Vector2& vec) {
 }
 
 //================================= Wrapper =================================//
-namespace rf {
-  RVOWrapper::RVOWrapper(vector<BotClient *> bots, size_t id, map_t *map,
+namespace rvo {
+  RVOWrapper::RVOWrapper(vector<BotClient *> bots, size_t id, OccupancyMap *map,
                          const vector<vector<RVO::Vector2> > &obstacles) :
     bots_(bots), map_(map), id_(id), axel_width_(0.23), goal_tol_(0.1),
     path_margin_(0.2), timestep_(0.1), los_margin_(0.1), max_speed_(0.3) {
@@ -124,7 +123,7 @@ namespace rf {
     delete sim_;
   }
 
-  RVOWrapper* RVOWrapper::ROSInit(const ros::NodeHandle& nh, map_t *map, vector<BotClient*> bots) {
+  RVOWrapper* RVOWrapper::ROSInit(const ros::NodeHandle& nh, OccupancyMap *map, vector<BotClient*> bots) {
     // Setup simulation
     int id;
     double neighborDist, timeHorizon, timeHorizonObst, radius, maxSpeed, los_margin;
@@ -289,7 +288,7 @@ namespace rf {
     PointVector path;
     double margin = path_margin_;
     while (true) {
-      path = astar(rvo_to_eig(start), rvo_to_eig(goal_), map_, margin);
+      path = map_->astar(start.x(), start.y(), goal_.x(), goal_.y(), margin);
       if (path.size() != 0 || margin < 0.05) {
         break;
       } else {
@@ -457,13 +456,9 @@ namespace rf {
 
     ROS_INFO("Setting up action server '%s'", action_name_.c_str());
     // Get the map
-    map_ = requestCSpaceMap("map");
-    double max_occ_dist;
-    pnh_.param("path_margin", max_occ_dist, 0.1);
-    if (map_->max_occ_dist < max_occ_dist) {
-      ROS_WARN("path_margin set to %0.2f but map's c-space max_occ_dist is %0.2f",
-               max_occ_dist, map_->max_occ_dist);
-    }
+    OccupancyMap *map = OccupancyMap::FromMapServer("map");
+    map->updateCSpace(1.0);
+
     // Get bots
     namespace_ = nh_.getNamespace();
     bots_ = BotClient::MakeBots(pnh_);
@@ -472,7 +467,7 @@ namespace rf {
       ROS_INFO("  Bot %zu: %s", i, bots_[i]->getName().c_str());
     }
 
-    wrapper_ = RVOWrapper::ROSInit(pnh_, map_, bots_);
+    wrapper_ = RVOWrapper::ROSInit(pnh_, map, bots_);
     pnh_.param("timestep", timestep_, 0.1);
     wrapper_->setTimestep(timestep_);
 
@@ -488,7 +483,6 @@ namespace rf {
 
   MoveServer::~MoveServer() {
     delete wrapper_;
-    map_free(map_);
     for (size_t i = 0; i < bots_.size(); ++i) {
       delete bots_[i];
     }

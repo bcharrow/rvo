@@ -8,7 +8,16 @@
 #include <player_map/GetMap.h>
 
 using namespace std;
-namespace rf {
+
+namespace rvo {
+
+double pathLength(const rvo::PointVector &path) {
+  double dist = 0.0;
+  for (size_t i = 0; i < path.size() - 1; ++i) {
+    dist += (path[i] - path[i+1]).norm();
+  }
+  return dist;
+}
 
 void convertMap(const nav_msgs::OccupancyGrid &map, map_t *pmap) {
   pmap->size_x = map.info.width;
@@ -111,9 +120,8 @@ void OccupancyMap::setMap(const nav_msgs::OccupancyGrid &grid) {
   if (map_ != NULL) {
     map_free(map_);
   }
-
-  map_t* map = map_alloc();
-  ROS_ASSERT(map);
+  map_ = map_alloc();
+  ROS_ASSERT(map_);
   convertMap(grid, map_);
 }
 
@@ -131,9 +139,10 @@ bool OccupancyMap::lineOfSight(double x1, double y1, double x2, double y2,
     return true;
   }
   if (map_->max_occ_dist < max_occ_dist) {
-    ROS_WARN("OccupancyMap::lineOfSight() CSpace has been calculated up to %f, "
-             "but max_occ_dist=%.2f",
-             map_->max_occ_dist, max_occ_dist);
+    ROS_ERROR("OccupancyMap::lineOfSight() CSpace has been calculated up to %f, "
+              "but max_occ_dist=%.2f",
+              map_->max_occ_dist, max_occ_dist);
+    ROS_BREAK();
   }
   // March along the line between (x1, y1) and (x2, y2) until the point passes
   // beyond (x2, y2).
@@ -291,7 +300,7 @@ void OccupancyMap::buildPath(int i, int j, PointVector *path) {
   path->push_back(Eigen::Vector2f(x, y));
 }
 
-bool OccupancyMap::nextNode(Node *curr_node, double max_occ_dist) {
+bool OccupancyMap::nextNode(double max_occ_dist, Node *curr_node) {
   if (!Q_->empty()) {
     // Copy node and then erase it
     *curr_node = *Q_->begin();
@@ -315,6 +324,12 @@ PointVector OccupancyMap::astar(double startx, double starty,
     ROS_ERROR("OccupancyMap::astar() Invalid stopping position");
     ROS_BREAK();
   }
+  if (map_->max_occ_dist < max_occ_dist) {
+    ROS_ERROR("OccupancyMap::astar() CSpace has been calculated up to %f, "
+              "but max_occ_dist=%.2f",
+              map_->max_occ_dist, max_occ_dist);
+    ROS_BREAK();
+  }
 
   initializeSearch(startx, starty);
   // Set stop to use heuristic
@@ -323,7 +338,7 @@ PointVector OccupancyMap::astar(double startx, double starty,
 
   bool found = false;
   Node curr_node;
-  while (nextNode(&curr_node, max_occ_dist)) {
+  while (nextNode(max_occ_dist, &curr_node)) {
     if (curr_node.coord.first == stopi && curr_node.coord.second == stopj) {
       found = true;
       break;
@@ -335,6 +350,42 @@ PointVector OccupancyMap::astar(double startx, double starty,
   if (found) {
     buildPath(stopi, stopj, &path);
   }
+  return PointVector(path.rbegin(), path.rend());
+}
+
+const PointVector&
+OccupancyMap::prepareShortestPaths(double x, double y, double distance,
+                                   double margin, double max_occ_dist) {
+  if (map_->max_occ_dist < max_occ_dist) {
+    ROS_ERROR("OccupancyMap::prepareShortestPaths() CSpace has been calculated "
+              "up to %f, but max_occ_dist=%.2f",
+              map_->max_occ_dist, max_occ_dist);
+    ROS_BREAK();
+  }
+
+  initializeSearch(x, y);
+
+  Node curr_node;
+  endpoints_.clear();
+  while (nextNode(max_occ_dist, &curr_node)) {
+    double node_dist = curr_node.true_dist * map_->scale;
+    if (fabs(node_dist - distance) < margin) {
+      float x = MAP_WXGX(map_, curr_node.coord.first);
+      float y = MAP_WYGY(map_, curr_node.coord.second);
+      endpoints_.push_back(Eigen::Vector2f(x, y));
+    } else if (node_dist > distance + margin) {
+      break;
+    }
+  }
+  return endpoints_;
+}
+
+PointVector OccupancyMap::buildShortestPath(int ind) {
+  // Recreate path
+  const Eigen::Vector2f &stop = endpoints_.at(ind);
+  PointVector path;
+  int stopi = MAP_GXWX(map_, stop(0)), stopj = MAP_GYWY(map_, stop(1));
+  buildPath(stopi, stopj, &path);
   return PointVector(path.rbegin(), path.rend());
 }
 

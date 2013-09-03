@@ -6,13 +6,13 @@
 
 using namespace std;
 
-namespace rf {
+namespace rvo {
   BotClient::BotClient(const ros::NodeHandle &parent, string prefix) :
     got_odom_(false), got_pose_(false) {
     parent.param(prefix, name_, prefix);
     nh_ = new ros::NodeHandle(name_);
     pose_sub_ = nh_->subscribe("amcl_pose", 5, &BotClient::poseCallback, this);
-    odom_sub_ = nh_->subscribe("motor/odom", 5, &BotClient::odomCallback, this);
+    odom_sub_ = nh_->subscribe("motor_odom", 5, &BotClient::odomCallback, this);
 
     bool init_pose = (nh_->hasParam("amcl/initial_pose_x") &&
                       nh_->hasParam("amcl/initial_pose_y") &&

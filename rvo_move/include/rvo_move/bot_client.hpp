@@ -10,7 +10,7 @@
 #include "geometry_msgs/PoseStamped.h"
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 
-namespace rf {
+namespace rvo {
   class BotClient {
   public:
     BotClient(const ros::NodeHandle &parent, std::string prefix);

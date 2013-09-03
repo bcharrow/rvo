@@ -13,8 +13,10 @@
 #include <nav_msgs/OccupancyGrid.h>
 #include <player_map/map.h>
 
-namespace rf {
+namespace rvo {
 typedef std::vector<Eigen::Vector2f, Eigen::aligned_allocator<Eigen::Vector2f> > PointVector;
+
+double pathLength(const rvo::PointVector &path);
 
 class OccupancyMap {
 public:
@@ -26,14 +28,25 @@ public:
   void setMap(const nav_msgs::OccupancyGrid &grid);
   void updateCSpace(double max_occ_dist);
 
+  double minX() { return MAP_WXGX(map_, 0); }
+  double minY() { return MAP_WYGY(map_, 0); }
+  double maxX() { return MAP_WXGX(map_, map_->size_x); }
+  double maxY() { return MAP_WYGY(map_, map_->size_y); }
+  
+  const map_cell_t* getCell(double x, double y) {
+    return map_get_cell(map_, x, y, 0);
+  }
+  
   bool lineOfSight(double x1, double y1, double x2, double y2,
                    double max_occ_dist = 0.0) const;
   PointVector astar(double x1, double y1, double x2, double y2,
                     double max_occ_dist = 0.0);
 
-  // PointVector prepareShortestPaths(double x, double y, double distance,
-  //                                  double max_occ_dist);
-  // PointVector buildShortestPath(int ind);
+  // Get a list of endpoints
+  const PointVector& prepareShortestPaths(double x, double y, double distance,
+                                          double margin, double max_occ_dist);
+  // Get the path whose endpoint is ind from last call to prepareShortestPaths()
+  PointVector buildShortestPath(int ind);
 
 private:
   struct Node {
@@ -53,7 +66,7 @@ private:
   };
 
   void initializeSearch(double startx, double starty);
-  bool nextNode(Node *curr_node, double max_occ_dist);
+  bool nextNode(double max_occ_dist, Node *curr_node);
   void addNeighbors(const Node &node, double max_occ_dist);
   void buildPath(int i, int j, PointVector *path);
 
@@ -66,6 +79,7 @@ private:
   boost::scoped_array<int> prev_j_;
   // Priority queue mapping cost to index
   boost::scoped_ptr<std::set<Node, NodeCompare> > Q_;
+  PointVector endpoints_;
 };
 
 }
