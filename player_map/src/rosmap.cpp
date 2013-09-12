@@ -209,6 +209,8 @@ void OccupancyMap::initializeSearch(double startx, double starty) {
 
   for (int i = 0; i < ncells_; ++i) {
     costs_[i] = std::numeric_limits<float>::infinity();
+    prev_i_[i] = -1;
+    prev_j_[i] = -1;
   }
 
   int start_ind = MAP_INDEX(map_, starti_, startj_);
@@ -387,6 +389,42 @@ PointVector OccupancyMap::buildShortestPath(int ind) {
   int stopi = MAP_GXWX(map_, stop(0)), stopj = MAP_GYWY(map_, stop(1));
   buildPath(stopi, stopj, &path);
   return PointVector(path.rbegin(), path.rend());
+}
+
+void OccupancyMap::prepareAllShortestPaths(double x, double y,
+                                           double max_occ_dist) {
+  if (map_->max_occ_dist < max_occ_dist) {
+    ROS_ERROR("OccupancyMap::shortestToDests() CSpace has been calculated "
+              "up to %f, but max_occ_dist=%.2f",
+              map_->max_occ_dist, max_occ_dist);
+    ROS_BREAK();
+  }
+
+  initializeSearch(x, y);
+
+  Node curr_node;
+  while (nextNode(max_occ_dist, &curr_node)) {
+    ;
+  }
+}
+
+PointVector OccupancyMap::shortestPath(double stopx, double stopy) {
+  int i = MAP_GXWX(map_, stopx);
+  int j = MAP_GYWY(map_, stopy);
+  int ind = MAP_INDEX(map_, i, j);
+  PointVector path;
+
+  if (!MAP_VALID(map_, i, j)) {
+    ROS_ERROR("OccMap::shortestPath() Invalid destination: x=%f y=%f",
+              stopx, stopy);
+    ROS_BREAK();
+    return path; // return to prevent compiler warning
+  } else if ( prev_i_[ind] == -1 || prev_j_[ind] == -1) {
+    return path;
+  } else {
+    buildPath(i, j, &path);
+    return PointVector(path.rbegin(), path.rend());
+  }
 }
 
 }
