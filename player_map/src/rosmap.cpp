@@ -356,9 +356,8 @@ PointVector OccupancyMap::astar(double startx, double starty,
 }
 
 const PointVector&
-OccupancyMap::prepareShortestPaths(double x, double y, double distance,
-                                   double margin, double max_occ_dist,
-                                   double min_dist) {
+OccupancyMap::prepareShortestPaths(double x, double y, double max_occ_dist,
+                                   double min_dist, double max_dist) {
   if (map_->max_occ_dist < max_occ_dist) {
     ROS_ERROR("OccupancyMap::prepareShortestPaths() CSpace has been calculated "
               "up to %f, but max_occ_dist=%.2f",
@@ -372,11 +371,11 @@ OccupancyMap::prepareShortestPaths(double x, double y, double distance,
   endpoints_.clear();
   while (nextNode(max_occ_dist, &curr_node)) {
     double node_dist = curr_node.true_dist * map_->scale;
-    if (fabs(node_dist - distance) < margin && node_dist > min_dist) {
+    if (min_dist < node_dist && node_dist < max_dist) {
       float x = MAP_WXGX(map_, curr_node.coord.first);
       float y = MAP_WYGY(map_, curr_node.coord.second);
       endpoints_.push_back(Eigen::Vector2f(x, y));
-    } else if (node_dist > distance + margin) {
+    } else if (max_dist < node_dist) {
       break;
     }
   }

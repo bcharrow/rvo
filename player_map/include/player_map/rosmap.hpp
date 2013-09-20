@@ -45,9 +45,9 @@ public:
   // TODO: Unify these two APIs
 
   // Get a list of endpoints
-  const PointVector& prepareShortestPaths(double x, double y, double distance,
-                                          double margin, double max_occ_dist,
-                                          double min_dist = 0.0);
+  const PointVector& prepareShortestPaths(double x, double y,
+                                          double max_occ_dist,
+                                          double min_dist, double max_dist);
   // Get the path whose endpoint is ind from last call to prepareShortestPaths()
   PointVector buildShortestPath(int ind);
 
