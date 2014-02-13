@@ -1,46 +1,26 @@
-cmake_minimum_required(VERSION 2.4.6)
-include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
-
-# Set the build type.  Options are:
-#  Coverage       : w/ debug symbols, w/o optimization, w/ code-coverage
-#  Debug          : w/ debug symbols, w/o optimization
-#  Release        : w/o debug symbols, w/ optimization
-#  RelWithDebInfo : w/ debug symbols, w/ optimization
-#  MinSizeRel     : w/o debug symbols, w/ optimization, stripped binaries
-set(ROS_BUILD_TYPE RelWithDebInfo)
-
-rosbuild_init()
-
-#set the default path for built executables to the "bin" directory
-set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
-#set the default path for built libraries to the "lib" directory
-set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
+cmake_minimum_required(VERSION 2.8.3)
+project(player_map)
 
 find_package(Eigen REQUIRED)
 include_directories(${EIGEN_INCLUDE_DIRS})
-add_definitions(${EIGEN_DEFINITIONS})
 
-#uncomment if you have defined messages
-#rosbuild_genmsg()
-#uncomment if you have defined services
-rosbuild_gensrv()
+find_package(catkin REQUIRED COMPONENTS roscpp nav_msgs map_server)
 
-#common commands for building c++ executables and libraries
-rosbuild_add_library(playermap src/map.c src/rosmap.cpp)
-#target_link_libraries(${PROJECT_NAME} another_library)
-#rosbuild_add_boost_directories()
-#rosbuild_link_boost(${PROJECT_NAME} thread)
-#rosbuild_add_executable(example examples/example.cpp)
-#target_link_libraries(example ${PROJECT_NAME})
+add_service_files(FILES GetMap.srv)
+generate_messages(DEPENDENCIES nav_msgs)
 
-rosbuild_add_executable(draw_paths src/draw_paths.cpp)
-target_link_libraries(draw_paths playermap)
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES rvoplayermap
+  CATKIN_DEPENDS roscpp nav_msgs map_server)
 
-rosbuild_add_gtest(test_rosmap src/rosmap_test.cpp)
-target_link_libraries(test_rosmap playermap)
+include_directories(include)
 
-# rosbuild_add_executable(player_map_server src/player_map_server.cpp)
-# target_link_libraries(player_map_server playermap image_loader)
+add_library(rvoplayermap src/map.c src/rosmap.cpp)
+target_link_libraries(rvoplayermap ${catkin_LIBRARIES})
 
-# rosbuild_add_executable(player_map_test src/player_map_test.cpp)
-# target_link_libraries(player_map_test playermap)
+add_executable(rvo_draw_paths src/draw_paths.cpp)
+target_link_libraries(rvo_draw_paths rvoplayermap)
+
+catkin_add_gtest(test_rosmap src/rosmap_test.cpp)
+target_link_libraries(test_rosmap rvoplayermap)

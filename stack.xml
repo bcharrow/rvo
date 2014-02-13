@@ -1,9 +1,0 @@
-<stack>
-  <description brief="rvo">rvo</description>
-  <author>Maintained by Ben Charrow</author>
-  <license>BSD</license>  
-  <review status="unreviewed" notes=""/>
-  <url>http://ros.org/wiki/rvo</url>
-  <depend stack="ros" />
-
-</stack>
