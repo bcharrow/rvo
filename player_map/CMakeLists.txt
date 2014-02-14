@@ -18,6 +18,7 @@ include_directories(include)
 
 add_library(rvoplayermap src/map.c src/rosmap.cpp)
 target_link_libraries(rvoplayermap ${catkin_LIBRARIES})
+add_dependencies(rvoplayermap ${PROJECT_NAME}_gencpp)
 
 add_executable(rvo_draw_paths src/draw_paths.cpp)
 target_link_libraries(rvo_draw_paths rvoplayermap)
