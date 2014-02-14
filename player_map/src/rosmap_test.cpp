@@ -5,7 +5,7 @@
 #include <Eigen/Dense>
 
 using namespace Eigen;
-using namespace rf;
+using namespace rvo;
 enum {
   FREE = -1,
   UNKNOWN = 0,
