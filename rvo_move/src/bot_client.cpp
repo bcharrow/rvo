@@ -12,7 +12,7 @@ namespace rvo {
     parent.param(prefix, name_, prefix);
     nh_ = new ros::NodeHandle(name_);
     pose_sub_ = nh_->subscribe("amcl_pose", 5, &BotClient::poseCallback, this);
-    odom_sub_ = nh_->subscribe("motor_odom", 5, &BotClient::odomCallback, this);
+    odom_sub_ = nh_->subscribe("odom_motor", 5, &BotClient::odomCallback, this);
 
     bool init_pose = (nh_->hasParam("amcl/initial_pose_x") &&
                       nh_->hasParam("amcl/initial_pose_y") &&
